@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "macos": {
+      "type": "stdio",
+      "command": "bun",
+      "args": [
+        "run",
+        "${CLAUDE_PLUGIN_ROOT}/dist/server.js"
+      ]
+    }
+  }
+}

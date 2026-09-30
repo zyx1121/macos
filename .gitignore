@@ -1,0 +1,10 @@
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.*
+*.local.json
+ue_receipts_out/
+ue_ledger/
+cookie.txt

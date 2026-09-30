@@ -1,0 +1,32 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "macos",
+  "version": "0.1.0",
+  "description": "macOS Calendar, Reminders, Mail, Safari and screenshots through MCP.",
+  "author": {
+    "name": "zyx1121",
+    "url": "https://github.com/zyx1121"
+  },
+  "repository": "https://github.com/zyx1121/macos",
+  "license": "MIT",
+  "keywords": [
+    "macos",
+    "mcp",
+    "codex",
+    "claude-code"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "macOS",
+        "shortDescription": "macOS apps and screen capture",
+        "developerName": "zyx1121",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ]
+      }
+    }
+  }
+}

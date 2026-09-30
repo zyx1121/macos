@@ -1,0 +1,17 @@
+{
+  "name": "macos",
+  "version": "0.1.0",
+  "description": "macOS Calendar, Reminders, Mail, Safari and screenshots through MCP.",
+  "author": {
+    "name": "zyx1121",
+    "url": "https://github.com/zyx1121"
+  },
+  "repository": "https://github.com/zyx1121/macos",
+  "license": "MIT",
+  "keywords": [
+    "macos",
+    "mcp",
+    "codex",
+    "claude-code"
+  ]
+}
