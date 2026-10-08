@@ -223,12 +223,16 @@ def deleted_drafts(identifier=None):
         / "requests.sqlite3"
     )
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with sqlite3.connect(path) as db:
-        os.chmod(path, 0o600)
-        db.execute("CREATE TABLE IF NOT EXISTS deleted_drafts (id TEXT PRIMARY KEY)")
-        if identifier is not None:
-            db.execute("INSERT OR IGNORE INTO deleted_drafts VALUES (?)", (identifier,))
-        return {r[0] for r in db.execute("SELECT id FROM deleted_drafts")}
+    db = sqlite3.connect(path)
+    try:
+        with db:
+            os.chmod(path, 0o600)
+            db.execute("CREATE TABLE IF NOT EXISTS deleted_drafts (id TEXT PRIMARY KEY)")
+            if identifier is not None:
+                db.execute("INSERT OR IGNORE INTO deleted_drafts VALUES (?)", (identifier,))
+            return {r[0] for r in db.execute("SELECT id FROM deleted_drafts")}
+    finally:
+        db.close()
 
 
 def perform(operation, p):
