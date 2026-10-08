@@ -35100,7 +35100,18 @@ var schedule = exports_external.discriminatedUnion("kind", [
 var nullableText = text.nullable().optional();
 var url2 = exports_external.url().nullable().optional();
 var alarms = exports_external.array(exports_external.number().int().min(0).max(525600)).max(10).describe("Minutes before the start/due time. [] clears alarms. Date-only reminders require an explicit timed reminder instead.");
-var recurrence = exports_external.object({ frequency: exports_external.enum(["daily", "weekly", "monthly", "yearly"]), interval: exports_external.number().int().min(1).max(100).default(1), count: exports_external.number().int().min(1).max(1e4).optional(), until: moment.optional() }).refine((r) => !(r.count && r.until), "Choose count or until, not both.");
+var recurrence = exports_external.object({
+  frequency: exports_external.enum(["daily", "weekly", "monthly", "yearly"]),
+  interval: exports_external.number().int().min(1).max(100).default(1),
+  count: exports_external.number().int().min(1).max(1e4).optional(),
+  until: moment.optional(),
+  days_of_week: exports_external.array(exports_external.object({ day: exports_external.number().int().min(1).max(7).describe("Sunday=1 through Saturday=7."), week: exports_external.number().int().min(-53).max(53).default(0) })).min(1).max(7).optional(),
+  days_of_month: exports_external.array(exports_external.number().int().min(-31).max(31).refine((n) => n !== 0)).min(1).max(62).optional(),
+  months_of_year: exports_external.array(exports_external.number().int().min(1).max(12)).min(1).max(12).optional(),
+  weeks_of_year: exports_external.array(exports_external.number().int().min(-53).max(53).refine((n) => n !== 0)).min(1).max(106).optional(),
+  days_of_year: exports_external.array(exports_external.number().int().min(-366).max(366).refine((n) => n !== 0)).min(1).max(732).optional(),
+  set_positions: exports_external.array(exports_external.number().int().min(-366).max(366).refine((n) => n !== 0)).min(1).max(732).optional()
+}).refine((r) => !(r.count && r.until), "Choose count or until, not both.");
 var nativeRecurrence = exports_external.array(exports_external.object({ frequency: exports_external.enum(["daily", "weekly", "monthly", "yearly"]), interval: exports_external.number().int(), count: exports_external.number().int().nullable(), until: moment.nullable(), days_of_week: exports_external.array(exports_external.object({ day: exports_external.number().int(), week: exports_external.number().int() })), days_of_month: exports_external.array(exports_external.number().int()), months_of_year: exports_external.array(exports_external.number().int()), weeks_of_year: exports_external.array(exports_external.number().int()), days_of_year: exports_external.array(exports_external.number().int()), set_positions: exports_external.array(exports_external.number().int()), first_day_of_week: exports_external.number().int() })).nullable();
 var scope = exports_external.enum(["this", "future"]).describe("Required for recurring events: this occurrence, or this occurrence and future ones.");
 var paging = { limit: exports_external.number().int().min(1).max(100).default(30), cursor: exports_external.string().optional().describe("Opaque next_cursor from the same query. A stale cursor requires restarting the query.") };
@@ -35164,129 +35175,40 @@ var notesTools = [
   tool("notes_append", "Append escaped text or HTML to an unlocked note by ID and revision. Attachment-bearing notes are refused to avoid destructive HTML round-trips.", { id, expected_revision: revision, body_text: text.optional(), body_html: text.optional(), confirm: exports_external.literal(true) }, note, "update"),
   tool("notes_delete", "Delete a note by ID and expected_revision. The native Notes app controls Recently Deleted behavior.", { id, expected_revision: revision, confirm: exports_external.literal(true) }, deleted, "update")
 ];
-// src/core/argv.ts
-function pushPos(argv, value) {
-  if (value === undefined)
-    return;
-  argv.push(String(value));
-}
-function pushFlag(argv, flag, value) {
-  if (value === undefined)
-    return;
-  if (typeof value === "boolean") {
-    if (value)
-      argv.push(flag);
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      argv.push(flag, String(item));
-    }
-    return;
-  }
-  argv.push(flag, String(value));
-}
-
 // src/tools/mail/index.ts
-var script = "mail.py";
-var requires = ["platform:darwin", "binary:osascript", "binary:uv"];
-var envelope = true;
-var timeoutMs = 130000;
-var read2 = { readOnlyHint: true, openWorldHint: false };
+var id2 = exports_external.string().min(1);
+var moment2 = exports_external.iso.datetime({ offset: true });
+var paging2 = { limit: exports_external.number().int().min(1).max(100).default(30), cursor: exports_external.string().optional() };
+var account = exports_external.looseObject({ id: id2, name: exports_external.string(), addresses: exports_external.array(exports_external.string()) });
+var mailbox = exports_external.looseObject({ id: id2, title: exports_external.string(), account_id: id2.nullable(), parent_id: id2.nullable() });
+var summary = exports_external.looseObject({ id: id2, mailbox_id: id2, subject: exports_external.string(), sender: exports_external.string(), received_at: moment2.nullable(), read: exports_external.boolean() });
+var message = summary.extend({ body_text: exports_external.string(), to: exports_external.array(exports_external.string()), cc: exports_external.array(exports_external.string()), bcc: exports_external.array(exports_external.string()), attachment_count: exports_external.number().int(), revision: exports_external.string() });
+var draft = exports_external.looseObject({ id: id2, subject: exports_external.string(), body_text: exports_external.string(), sender: exports_external.string(), to: exports_external.array(exports_external.string()), cc: exports_external.array(exports_external.string()), bcc: exports_external.array(exports_external.string()), visible: exports_external.boolean(), revision: exports_external.string() });
+var page2 = (item) => exports_external.object({ items: exports_external.array(item), next_cursor: exports_external.string().nullable() });
+var fields = { subject: exports_external.string().max(1000), body_text: exports_external.string().max(200000), to: exports_external.array(exports_external.email()).max(100), cc: exports_external.array(exports_external.email()).max(100).optional(), bcc: exports_external.array(exports_external.email()).max(100).optional(), account_id: id2.optional(), visible: exports_external.boolean().optional() };
+var filter = { account_id: id2.optional(), mailbox_id: id2.optional(), received_from: moment2.optional(), received_to: moment2.optional(), unread: exports_external.boolean().optional(), ...paging2 };
+function tool2(name, description, inputSchema, output2, mode) {
+  return scriptTool({ name, description, inputSchema, outputSchema: envelopeOutput(output2), annotations: { readOnlyHint: mode === "read", destructiveHint: mode === "update", idempotentHint: mode !== "update", openWorldHint: false }, requires: ["platform:darwin", "binary:uv", "binary:osascript"], script: "productivity.py", envelope: true, timeoutMs: 130000, buildArgs: () => [name], buildStdin: (input2) => JSON.stringify(input2), truncationHint: "reduce limit or get one message; never overwrite a truncated draft" });
+}
 var mailTools = [
-  scriptTool({
-    name: "mail_list_accounts",
-    description: "List configured Mail.app accounts. One account can own several addresses, returned as a comma-joined string.",
-    inputSchema: {},
-    outputSchema: envelopeOutput(exports_external.array(exports_external.looseObject({ name: exports_external.string(), user: exports_external.string(), addresses: exports_external.string() }))),
-    annotations: read2,
-    script,
-    requires,
-    envelope,
-    timeoutMs,
-    buildArgs: () => ["accounts"]
-  }),
-  scriptTool({
-    name: "mail_list_inbox",
-    description: "List recent inbox messages across Mail.app accounts. Reads the user's real mail; treat contents as private.",
-    inputSchema: { unread: exports_external.boolean().optional().describe("Only unread messages."), limit: exports_external.number().optional().describe("Maximum rows. Default: 20.") },
-    annotations: read2,
-    script,
-    requires,
-    envelope,
-    timeoutMs,
-    truncationHint: "lower limit, or set unread=true",
-    buildArgs: (input2) => {
-      const argv = ["inbox"];
-      pushFlag(argv, "--unread", input2.unread);
-      pushFlag(argv, "--limit", input2.limit);
-      return argv;
-    }
-  }),
-  scriptTool({
-    name: "mail_search_messages",
-    description: "Search inbox subject and sender by substring. Scans the local mailbox only, so mail not synced to this Mac is invisible.",
-    inputSchema: { query: exports_external.string().describe("Subject/sender substring."), limit: exports_external.number().optional().describe("Maximum rows. Default: 20.") },
-    annotations: read2,
-    script,
-    requires,
-    envelope,
-    timeoutMs,
-    truncationHint: "lower limit or use a narrower query",
-    buildArgs: (input2) => {
-      const argv = ["search"];
-      pushPos(argv, input2.query);
-      pushFlag(argv, "--limit", input2.limit);
-      return argv;
-    }
-  }),
-  scriptTool({
-    name: "mail_read_message",
-    description: "Read the first inbox message whose subject matches. Returns the full body, so a long thread is truncated to fit context.",
-    inputSchema: { subject: exports_external.string().describe("Exact subject preferred; falls back to contains.") },
-    annotations: read2,
-    script,
-    requires,
-    envelope,
-    timeoutMs,
-    truncationHint: "the body was long; ask for the specific part you need",
-    buildArgs: (input2) => ["read", input2.subject]
-  }),
-  scriptTool({
-    name: "mail_compose_draft",
-    description: "Open a visible Mail.app draft. The user reviews and sends manually; this never auto-sends, so the draft is the deliverable.",
-    inputSchema: {
-      to: exports_external.array(exports_external.string()).describe("Recipient addresses."),
-      subject: exports_external.string().describe("Subject line."),
-      body: exports_external.string().optional().describe("Body text."),
-      cc: exports_external.array(exports_external.string()).optional().describe("CC addresses."),
-      bcc: exports_external.array(exports_external.string()).optional().describe("BCC addresses."),
-      account: exports_external.string().optional().describe("Send-from account name.")
-    },
-    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    script,
-    requires,
-    envelope,
-    timeoutMs,
-    buildArgs: (input2) => {
-      const argv = ["compose"];
-      pushFlag(argv, "--to", input2.to);
-      pushFlag(argv, "--subject", input2.subject);
-      pushFlag(argv, "--body", input2.body);
-      pushFlag(argv, "--cc", input2.cc);
-      pushFlag(argv, "--bcc", input2.bcc);
-      pushFlag(argv, "--account", input2.account);
-      return argv;
-    }
-  })
+  tool2("mail_list_accounts", "List Mail accounts with opaque IDs and sender addresses.", {}, exports_external.array(account), "read"),
+  tool2("mail_list_mailboxes", "Discover mailbox IDs and account/parent relationships, including nested mailboxes. IDs change when a mailbox is renamed or moved.", { account_id: id2.optional() }, exports_external.array(mailbox), "read"),
+  tool2("mail_list_messages", "List synced message summaries by explicit mailbox or account; omitted mailbox spans all discovered mailboxes. Date bounds are [from,to).", filter, page2(summary), "read"),
+  tool2("mail_search_messages", "Search subject and sender across synced mailboxes with account, mailbox, unread and date filters. Returns IDs; never selects the first matching subject.", { ...filter, query: exports_external.string().min(1) }, page2(summary), "read"),
+  tool2("mail_get_message", "Read one synced message by opaque ID, including text, recipients, attachments count and revision. Renamed/moved mailboxes require rediscovery.", { id: id2 }, message, "read"),
+  tool2("mail_list_drafts", "List open native compose drafts and revisions. Closed/reopened drafts receive new IDs. Discarded compose objects are filtered from the native cache.", paging2, page2(draft), "read"),
+  tool2("mail_create_draft", "Create and save a Mail compose draft with a retry key. Sender can be selected by account ID. visible defaults true. Returns an ID and never sends.", { ...fields, request_key: exports_external.string().min(1).max(200) }, draft, "create"),
+  tool2("mail_get_draft", "Read an open compose draft by native ID before editing. If closed or reopened, rediscover via mail_list_drafts.", { id: id2 }, draft, "read"),
+  tool2("mail_update_draft", "Patch a compose draft by ID/revision. Body replacement rebuilds a plain draft and returns a new ID, preserving omitted fields. Attachment/reply/forward body edits are refused. Never sends.", { id: id2, expected_revision: exports_external.string().min(1), confirm: exports_external.literal(true), ...Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, v.optional()])) }, draft, "update"),
+  tool2("mail_delete_draft", "Discard an open compose draft by ID and revision, including its saved draft copy. Never deletes received mail or sends a message.", { id: id2, expected_revision: exports_external.string().min(1), confirm: exports_external.literal(true) }, exports_external.object({ id: id2, deleted: exports_external.literal(true) }), "update")
 ];
 
 // src/tools/safari/index.ts
-var script2 = "safari.py";
-var requires2 = ["platform:darwin", "binary:osascript", "binary:uv"];
-var envelope2 = true;
-var timeoutMs2 = 60000;
-var read3 = { readOnlyHint: true, openWorldHint: false };
+var script = "safari.py";
+var requires = ["platform:darwin", "binary:osascript", "binary:uv"];
+var envelope = true;
+var timeoutMs = 60000;
+var read2 = { readOnlyHint: true, openWorldHint: false };
 var write = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
 var destroy = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
 var liveBrowser = "Acts on Loki's live Safari front tab, so it competes with whatever they are actually reading; for scanning pages use headless tooling instead.";
@@ -35297,11 +35219,11 @@ var safariTools = [
     description: `Get Safari front tab URL. ${liveBrowser}`,
     inputSchema: {},
     outputSchema: envelopeOutput(exports_external.looseObject({ url: exports_external.string() })),
-    annotations: read3,
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
+    annotations: read2,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     buildArgs: () => ["url"]
   }),
   scriptTool({
@@ -35309,22 +35231,22 @@ var safariTools = [
     description: `Get Safari front tab title. ${liveBrowser}`,
     inputSchema: {},
     outputSchema: envelopeOutput(exports_external.looseObject({ title: exports_external.string() })),
-    annotations: read3,
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
+    annotations: read2,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     buildArgs: () => ["title"]
   }),
   scriptTool({
     name: "safari_get_text",
     description: `Get visible rendered text from Safari front tab. ${liveBrowser} Long pages are truncated.`,
     inputSchema: {},
-    annotations: read3,
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
+    annotations: read2,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     truncationHint: "read the page in sections, or fetch the URL directly instead of through the browser",
     buildArgs: () => ["text"]
   }),
@@ -35333,11 +35255,11 @@ var safariTools = [
     description: `List all Safari tabs across windows. Reads the user's open tabs, which may include private context.`,
     inputSchema: {},
     outputSchema: envelopeOutput(exports_external.array(exports_external.looseObject({ wt: exports_external.string(), title: exports_external.string(), url: exports_external.string() }))),
-    annotations: read3,
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
+    annotations: read2,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     buildArgs: () => ["tabs"]
   }),
   scriptTool({
@@ -35345,10 +35267,10 @@ var safariTools = [
     description: "Open a URL in a new Safari tab. Does not block on page load; pair with a wait before reading content.",
     inputSchema: { target: exports_external.string().describe("URL to open.") },
     annotations: write,
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     buildArgs: (input2) => ["open", input2.target]
   }),
   scriptTool({
@@ -35356,21 +35278,21 @@ var safariTools = [
     description: `Close Safari front tab. Destructive browser state change; requires confirm=true. ${liveBrowser}`,
     inputSchema: { confirm: exports_external.literal(true).describe("Required explicit confirmation.") },
     annotations: destroy,
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     buildArgs: () => ["close"]
   }),
   scriptTool({
     name: "safari_get_selection",
     description: `Get current text selection in Safari front tab. ${needsAppleEvents}`,
     inputSchema: {},
-    annotations: read3,
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
+    annotations: read2,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     buildArgs: () => ["selection"]
   }),
   scriptTool({
@@ -35378,20 +35300,27 @@ var safariTools = [
     description: `Evaluate JavaScript in Safari front tab. ${needsAppleEvents} ${liveBrowser}`,
     inputSchema: { expression: exports_external.string().describe("JavaScript expression.") },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     truncationHint: "return a narrower value from the expression instead of a whole document",
     buildArgs: (input2) => ["js", input2.expression]
   })
 ];
 
+// src/core/argv.ts
+function pushPos(argv, value) {
+  if (value === undefined)
+    return;
+  argv.push(String(value));
+}
+
 // src/tools/screenshot/index.ts
-var script3 = "screenshot.sh";
-var requires3 = ["platform:darwin", "binary:screencapture"];
-var envelope3 = false;
-var timeoutMs3 = 60000;
+var script2 = "screenshot.sh";
+var requires2 = ["platform:darwin", "binary:screencapture"];
+var envelope2 = false;
+var timeoutMs2 = 60000;
 var out = exports_external.string().optional().describe("Output PNG path. Default: /tmp/screenshot.png.");
 var capture = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 var blocksOnHuman = "Blocks waiting for the user to drag or click, so never call it unattended, in a loop, or while they are away.";
@@ -35401,10 +35330,10 @@ var screenshotTools = [
     description: "Capture the full macOS screen to a PNG file. Unattended, but it records whatever is on screen, including anything private in view.",
     inputSchema: { out },
     annotations: capture,
-    script: script3,
-    requires: requires3,
-    envelope: envelope3,
-    timeoutMs: timeoutMs3,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     buildArgs: (input2) => {
       const argv = [];
       pushPos(argv, input2.out);
@@ -35416,10 +35345,10 @@ var screenshotTools = [
     description: `Interactively capture a dragged screen region. ${blocksOnHuman}`,
     inputSchema: { out },
     annotations: capture,
-    script: script3,
-    requires: requires3,
-    envelope: envelope3,
-    timeoutMs: timeoutMs3,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     buildArgs: (input2) => {
       const argv = ["--area"];
       pushPos(argv, input2.out);
@@ -35431,10 +35360,10 @@ var screenshotTools = [
     description: `Interactively capture a clicked window. ${blocksOnHuman}`,
     inputSchema: { out },
     annotations: capture,
-    script: script3,
-    requires: requires3,
-    envelope: envelope3,
-    timeoutMs: timeoutMs3,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     buildArgs: (input2) => {
       const argv = ["--window"];
       pushPos(argv, input2.out);
@@ -35446,10 +35375,10 @@ var screenshotTools = [
     description: "Capture a known pixel region with no UI interaction. Prefer this over screenshot_area when the coordinates are already known.",
     inputSchema: { region: exports_external.string().describe("x,y,w,h."), out },
     annotations: capture,
-    script: script3,
-    requires: requires3,
-    envelope: envelope3,
-    timeoutMs: timeoutMs3,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     buildArgs: (input2) => {
       const argv = ["--region", input2.region];
       pushPos(argv, input2.out);
@@ -35461,16 +35390,73 @@ var screenshotTools = [
     description: "Capture full screen to the clipboard. No file path is produced, so the image cannot be read back here; it also overwrites whatever the user had copied.",
     inputSchema: {},
     annotations: capture,
-    script: script3,
-    requires: requires3,
-    envelope: envelope3,
-    timeoutMs: timeoutMs3,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     buildArgs: () => ["--clipboard"]
   })
 ];
 
+// src/tools/organization.ts
+var id3 = exports_external.string().min(1);
+var title2 = exports_external.string().trim().min(1).max(1000);
+var request_key = exports_external.string().min(1).max(200);
+var expected_revision = exports_external.string().min(1);
+var confirm = exports_external.literal(true);
+var target = { id: id3, expected_revision, confirm };
+var source = exports_external.looseObject({ id: id3, title: exports_external.string() });
+var managed = container.extend({ revision: exports_external.string() });
+var deleted2 = exports_external.object({ id: id3, deleted: exports_external.literal(true) });
+var organizationTools = [
+  tool("notes_list_accounts", "List Notes accounts and opaque IDs before creating a root folder.", {}, exports_external.array(source), "read"),
+  tool("notes_get_folder", "Read a folder's identity, parent, content counts and revision before modifying it.", { id: id3 }, managed, "read"),
+  tool("notes_create_folder", "Create a Notes folder under an explicit account or parent folder. Nested folders must belong to the same account.", { account_id: id3, parent_id: id3.optional(), title: title2, request_key }, managed, "create"),
+  tool("notes_update_folder", "Rename or move a folder within its account. Refuses cycles and uses the current revision; omitted fields stay unchanged.", { ...target, title: title2.optional(), parent_id: id3.optional() }, managed, "update"),
+  tool("notes_delete_folder", "Delete only an empty root Notes folder with no notes or child folders. Nested-folder deletion is refused because native Apple Events does not reliably perform it.", target, deleted2, "update"),
+  ...["calendar", "reminders"].flatMap((f) => {
+    const object4 = f === "calendar" ? "calendar" : "list";
+    return [
+      tool(`${f}_list_sources`, "List native account/source IDs for creating calendars or reminder lists. Source permissions are checked by the native store.", {}, exports_external.array(source), "read"),
+      tool(`${f}_get_${object4}`, "Read a calendar/list by ID, including content count and revision.", { id: id3 }, managed, "read"),
+      tool(`${f}_create_${object4}`, "Create a calendar/list in an explicit native source with a durable retry key.", { source_id: id3, title: title2, request_key }, managed, "create"),
+      tool(`${f}_update_${object4}`, "Rename a calendar/list by ID and current revision. Account migration is not supported.", { ...target, title: title2 }, managed, "update"),
+      tool(`${f}_delete_${object4}`, "Delete only an empty calendar/list by ID and current revision. Refuses any remaining native item.", target, deleted2, "update")
+    ];
+  })
+];
+var moment3 = exports_external.iso.datetime({ offset: true });
+var policy = { calendar_ids: exports_external.array(id3).min(1).describe("Explicit calendars to inspect; never assumes unqueried calendars are free."), from: moment3, to: moment3, time_zone: exports_external.string().min(1), include_all_day: exports_external.boolean().default(true), include_free_events: exports_external.boolean().default(false), exclude_event_ids: exports_external.array(id3).default([]) };
+var coverage = { from: moment3, to: moment3, calendar_ids: exports_external.array(id3), policy: exports_external.looseObject({ time_zone: exports_external.string(), include_all_day: exports_external.boolean(), include_free_events: exports_external.boolean(), exclude_event_ids: exports_external.array(id3) }), coverage: exports_external.literal("local_synced_events_only") };
+var planningTools = [
+  tool("calendar_check_conflicts", "Find overlapping occurrences in explicit calendars. Half-open intervals allow adjacent events; canceled/free events follow the declared policy.", policy, exports_external.object({ ...coverage, conflicts: exports_external.array(event), has_conflicts: exports_external.boolean() }), "read"),
+  tool("calendar_find_free_slots", "Return maximal free intervals long enough for a task, within explicit calendars/range and optional local working hours. Includes coverage and policy.", { ...policy, duration_minutes: exports_external.number().int().min(1).max(10080), working_hours: exports_external.object({ start: exports_external.string().regex(/^\d{2}:\d{2}$/), end: exports_external.string().regex(/^\d{2}:\d{2}$/), weekdays: exports_external.array(exports_external.number().int().min(1).max(7)).min(1).max(7) }).optional(), limit: exports_external.number().int().min(1).max(100).default(30) }, exports_external.object({ ...coverage, slots: exports_external.array(exports_external.object({ start: moment3, end: moment3, duration_minutes: exports_external.number() })), has_more: exports_external.boolean(), minimum_duration_minutes: exports_external.number() }), "read")
+];
+
+// src/tools/capabilities.ts
+import { platform as platform2 } from "os";
+function capabilitiesTool(tools) {
+  return { name: "macos_get_capabilities", description: "Inspect tool availability, missing dependencies and noninteractive native permission status for this host. Includes hidden tools and remediation; never requests permission or launches apps.", inputSchema: {}, outputSchema: envelopeOutput(exports_external.object({ platform: exports_external.string(), tools: exports_external.array(exports_external.object({ name: exports_external.string(), available: exports_external.boolean(), missing: exports_external.array(exports_external.string()) })), permissions: exports_external.record(exports_external.string(), exports_external.string()), permission_probe_error: exports_external.string().nullable(), hints: exports_external.array(exports_external.string()) })), annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }, async run() {
+    const selected = await selectRunnableTools(tools);
+    let permissions = {}, permission_probe_error = null;
+    if (platform2() === "darwin" && (await evaluateRequirements(["binary:uv"])).ok) {
+      const probe = await runScript({ script: "productivity.py", args: ["macos_get_permissions"], stdin: "{}", envelope: true, timeoutMs: 15000 });
+      const content = probe.structuredContent;
+      if (probe.isError)
+        permission_probe_error = content?.error?.message ?? "Permission probe failed";
+      else
+        permissions = content?.data ?? {};
+    } else
+      permission_probe_error = platform2() === "darwin" ? "uv is missing" : "Native permissions require macOS";
+    const hidden = new Map(selected.hidden.map((t) => [t.tool, t.failed]));
+    return { isError: false, structuredContent: { data: { platform: platform2(), tools: [...tools.map((t) => ({ name: t.name, available: !hidden.has(t.name), missing: hidden.get(t.name) ?? [] })), { name: "macos_get_capabilities", available: true, missing: [] }], permissions, permission_probe_error, hints: ["Availability checks dependencies, not native authorization.", "Grant Calendar/Reminders full access and app Automation in System Settings > Privacy & Security.", "Permission probes run without prompts; unknown or target_not_running is not a permission grant.", "Native operations use the MCP host identity; terminal and app-host permissions may differ."] }, metadata: { schema_version: "v2" } } };
+  } };
+}
+
 // src/tools/index.ts
-var allTools = [
+var domainTools = [
+  ...organizationTools,
+  ...planningTools,
   ...notesTools,
   ...calendarTools,
   ...remindersTools,
@@ -35478,6 +35464,7 @@ var allTools = [
   ...safariTools,
   ...screenshotTools
 ];
+var allTools = [...domainTools, capabilitiesTool(domainTools)];
 // plugin.json
 var plugin_default = {
   $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",

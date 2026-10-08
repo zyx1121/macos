@@ -6,19 +6,19 @@ import { clearRequirementCache } from "../src/core/requires.ts";
 beforeEach(clearRequirementCache);
 test("tools register only when their host dependencies are present", async () => {
   const mac = await selectRunnableTools(allTools, { check: async r => ["platform:darwin", "binary:uv", "binary:osascript", "binary:screencapture"].includes(r) });
-  expect(mac.registered).toHaveLength(41);
+  expect(mac.registered).toHaveLength(64);
   clearRequirementCache();
   const linux = await selectRunnableTools(allTools, { check: async r => ["platform:linux", "binary:uv"].includes(r) });
-  expect(linux.registered).toHaveLength(0);
+  expect(linux.registered.map(t=>t.name)).toEqual(["macos_get_capabilities"]);
 
 });
 test("missing dependencies hide tools without crashing", async () => {
   const selected = await selectRunnableTools(allTools, { check: async () => { throw Error("missing"); } });
-  expect(selected.registered).toHaveLength(0);
-  expect(selected.hidden).toHaveLength(41);
+  expect(selected.registered.map(t=>t.name)).toEqual(["macos_get_capabilities"]);
+  expect(selected.hidden).toHaveLength(63);
 });
 test("tool contracts preserve confirmations and read/write annotations", () => {
-  expect(new Set(allTools.map(t => t.name)).size).toBe(41);
+  expect(new Set(allTools.map(t => t.name)).size).toBe(64);
   for (const tool of allTools) {
     expect(Object.keys(tool.outputSchema).length).toBeGreaterThan(0);
     expect(typeof tool.annotations.readOnlyHint).toBe("boolean");

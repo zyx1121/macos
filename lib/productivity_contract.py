@@ -209,3 +209,88 @@ def create_once(operation, payload, create, path=None):
         return result
     finally:
         db.close()
+
+
+def validate_recurrence(value):
+    if value is None:
+        return
+    frequencies = {"daily", "weekly", "monthly", "yearly"}
+    frequency = value.get("frequency")
+    if frequency not in frequencies:
+        fail("invalid_argument", "Unknown recurrence frequency")
+    if value.get("count") and value.get("until"):
+        fail("invalid_argument", "Choose count or until")
+    if not 1 <= value.get("interval", 1) <= 100:
+        fail("invalid_argument", "Invalid recurrence interval")
+    if "count" in value and not 1 <= value["count"] <= 10000:
+        fail("invalid_argument", "Invalid recurrence count")
+    if value.get("until"):
+        timestamp(value["until"])
+    allowed = {
+        "days_of_week": {"weekly", "monthly", "yearly"},
+        "days_of_month": {"monthly", "yearly"},
+        "months_of_year": {"yearly"},
+        "weeks_of_year": {"yearly"},
+        "days_of_year": {"yearly"},
+        "set_positions": {"monthly", "yearly"},
+    }
+    for key, frequencies in allowed.items():
+        if key in value and (not value[key] or frequency not in frequencies):
+            fail("invalid_argument", f"{key} is not valid for {frequency}")
+    for key, bound in [
+        ("days_of_month", 31),
+        ("months_of_year", 12),
+        ("weeks_of_year", 53),
+        ("days_of_year", 366),
+        ("set_positions", 366),
+    ]:
+        if key in value and (
+            len(value[key]) != len(set(value[key]))
+            or any(
+                not isinstance(n, int)
+                or n == 0
+                or abs(n) > bound
+                or (key == "months_of_year" and n < 0)
+                for n in value[key]
+            )
+        ):
+            fail("invalid_argument", f"Invalid {key}")
+    weekdays = value.get("days_of_week", [])
+    if len({(d.get("day"), d.get("week", 0)) for d in weekdays}) != len(weekdays):
+        fail("invalid_argument", "Duplicate weekdays")
+    for d in weekdays:
+        if d.get("day") not in range(1, 8) or d.get("week", 0) not in range(-53, 54):
+            fail("invalid_argument", "Invalid weekday selector")
+        if frequency == "monthly" and abs(d.get("week", 0)) > 5:
+            fail("invalid_argument", "Monthly weekday ordinals must be -5..5")
+        if (
+            frequency == "yearly"
+            and value.get("months_of_year")
+            and abs(d.get("week", 0)) > 5
+        ):
+            fail(
+                "invalid_argument",
+                "Yearly month-specific weekday ordinals must be -5..5",
+            )
+        if frequency == "weekly" and d.get("week", 0) != 0:
+            fail("invalid_argument", "Weekly weekdays cannot have ordinal weeks")
+        if (
+            frequency == "yearly"
+            and value.get("weeks_of_year")
+            and d.get("week", 0) != 0
+        ):
+            fail(
+                "invalid_argument",
+                "Yearly week selectors cannot combine ordinal weekdays",
+            )
+    if value.get("set_positions") and not any(
+        value.get(k)
+        for k in ("days_of_week", "days_of_month", "weeks_of_year", "days_of_year")
+    ):
+        fail("invalid_argument", "set_positions requires a day/week selector")
+    if value.get("days_of_year") and any(
+        value.get(k) for k in ("days_of_month", "weeks_of_year", "months_of_year")
+    ):
+        fail(
+            "invalid_argument", "Year-day selectors cannot combine month/week selectors"
+        )

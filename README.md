@@ -2,7 +2,7 @@
 
 Native Notes, Calendar, Reminders, Mail, Safari and screen capture tools for Codex and Claude Code.
 
-The plugin exposes 41 MCP tools. Notes uses Apple Events through JXA. Calendar and Reminders use EventKit for both reads and writes, without launching their apps. Mail, Safari and screenshots retain their existing interfaces.
+The plugin exposes 64 MCP tools. Notes uses Apple Events through JXA. Calendar and Reminders use EventKit for both reads and writes, without launching their apps. Mail, Safari and screenshots retain their existing interfaces.
 
 ## Install
 
@@ -18,18 +18,19 @@ claude plugin marketplace add zyx1121/marketplace
 claude plugin install macos@zyx1121
 ```
 
-Restart the client session after installation or update. Grant the MCP host full Calendar and Reminders access in System Settings > Privacy & Security. Notes and Mail/Safari require Automation permission; screenshots require Screen Recording. Notes automation may launch Notes in the background. Missing host dependencies hide affected tools with reasons on stderr; Linux exposes no native tools.
+Restart the client session after installation or update. Grant the MCP host full Calendar and Reminders access in System Settings > Privacy & Security. Notes and Mail/Safari require Automation permission; screenshots require Screen Recording. Notes automation may launch Notes in the background. Missing host dependencies hide affected tools with reasons on stderr; Linux exposes capability diagnostics without native app tools.
 
 ## Use
 
 | Family | Tools | Purpose |
 |---|---:|---|
-| Notes | 8 | Discover folders; list, search, get, create, update, append and delete notes |
-| Calendar | 7 | Discover calendars; list/search occurrences, get, create, update and delete events |
-| Reminders | 8 | Discover lists; list, search, get, create, update, complete and delete tasks |
-| Mail | 5 | Accounts, inbox, search/read and visible drafts |
+| Notes | 13 | Accounts and folder management; list, search, get, create, update, append and delete notes |
+| Calendar | 14 | Calendar/source management, occurrences, complex recurrence, conflict and free-slot planning |
+| Reminders | 13 | Source/list management; list, search, get, create, update, complete and delete tasks |
+| Mail | 10 | Account/mailbox discovery, message IDs, date filters and draft CRUD |
 | Safari | 8 | Tabs, page contents, selection and JavaScript |
 | Screenshot | 5 | Full screen, region, interactive captures and clipboard |
+| Diagnostics | 1 | Tool availability, missing dependencies and noninteractive permission checks |
 
 Typical requests include “read my coursework note and create reminders for its deadlines” and “move this event to next week without changing its notes.” The agent chooses the appropriate tools; the server does not infer deadlines or automatically synchronize apps.
 

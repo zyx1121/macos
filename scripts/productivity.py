@@ -16,7 +16,11 @@ from productivity_contract import ContractError, create_once, fail
 
 
 def dispatch(operation, payload):
-    if operation.startswith("notes_"):
+    if operation == "macos_get_permissions":
+        from permissions_provider import perform
+    elif operation.startswith("mail_"):
+        from mail_provider import perform
+    elif operation.startswith("notes_"):
         from notes_provider import perform
     elif operation.startswith(("calendar_", "reminders_")):
         from eventkit_provider import perform

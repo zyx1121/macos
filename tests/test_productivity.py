@@ -269,6 +269,8 @@ class NativeProviderContracts(unittest.TestCase):
             )
             eventIdentifier = lambda s: "event-1"
             location = lambda s: None
+            availability = lambda s: 0
+            status = lambda s: 1
             calendar = lambda s: SimpleNamespace(
                 calendarIdentifier=lambda: "cal-1",
                 allowsContentModifications=lambda: True,

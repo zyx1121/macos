@@ -16,22 +16,29 @@ export const schedule = z.discriminatedUnion("kind", [
 const nullableText = text.nullable().optional();
 const url = z.url().nullable().optional();
 const alarms = z.array(z.number().int().min(0).max(525600)).max(10).describe("Minutes before the start/due time. [] clears alarms. Date-only reminders require an explicit timed reminder instead.");
-const recurrence = z.object({ frequency: z.enum(["daily", "weekly", "monthly", "yearly"]), interval: z.number().int().min(1).max(100).default(1), count: z.number().int().min(1).max(10000).optional(), until: moment.optional() }).refine(r => !(r.count && r.until), "Choose count or until, not both.");
+export const recurrence = z.object({ frequency: z.enum(["daily", "weekly", "monthly", "yearly"]), interval: z.number().int().min(1).max(100).default(1), count: z.number().int().min(1).max(10000).optional(), until: moment.optional(),
+  days_of_week: z.array(z.object({ day: z.number().int().min(1).max(7).describe("Sunday=1 through Saturday=7."), week: z.number().int().min(-53).max(53).default(0) })).min(1).max(7).optional(),
+  days_of_month: z.array(z.number().int().min(-31).max(31).refine(n=>n!==0)).min(1).max(62).optional(),
+  months_of_year: z.array(z.number().int().min(1).max(12)).min(1).max(12).optional(),
+  weeks_of_year: z.array(z.number().int().min(-53).max(53).refine(n=>n!==0)).min(1).max(106).optional(),
+  days_of_year: z.array(z.number().int().min(-366).max(366).refine(n=>n!==0)).min(1).max(732).optional(),
+  set_positions: z.array(z.number().int().min(-366).max(366).refine(n=>n!==0)).min(1).max(732).optional(),
+}).refine(r => !(r.count && r.until), "Choose count or until, not both.");
 const nativeRecurrence = z.array(z.object({ frequency: z.enum(["daily", "weekly", "monthly", "yearly"]), interval: z.number().int(), count: z.number().int().nullable(), until: moment.nullable(), days_of_week: z.array(z.object({ day: z.number().int(), week: z.number().int() })), days_of_month: z.array(z.number().int()), months_of_year: z.array(z.number().int()), weeks_of_year: z.array(z.number().int()), days_of_year: z.array(z.number().int()), set_positions: z.array(z.number().int()), first_day_of_week: z.number().int() })).nullable();
 const scope = z.enum(["this", "future"]).describe("Required for recurring events: this occurrence, or this occurrence and future ones.");
-const paging = { limit: z.number().int().min(1).max(100).default(30), cursor: z.string().optional().describe("Opaque next_cursor from the same query. A stale cursor requires restarting the query.") };
+export const paging = { limit: z.number().int().min(1).max(100).default(30), cursor: z.string().optional().describe("Opaque next_cursor from the same query. A stale cursor requires restarting the query.") };
 const baseItem = { id, title: z.string(), revision: z.string() };
-const container = z.looseObject({ id, title: z.string(), account: z.string(), writable: z.boolean().nullable() });
+export const container = z.looseObject({ id, title: z.string(), account: z.string(), writable: z.boolean().nullable() });
 const noteSummary = z.looseObject({ ...baseItem, folder_id: id, created_at: moment.nullable(), modified_at: moment.nullable(), locked: z.boolean(), shared: z.boolean(), attachment_count: z.number().int(), preview: z.string() });
 const note = noteSummary.extend({ body_html: z.string(), body_text: z.string() });
-const event = z.looseObject({ ...baseItem, calendar_id: id, start: schedule, end: schedule, notes: z.string().nullable(), url: z.string().nullable(), location: z.string().nullable(), alarms_minutes_before: z.array(z.number()), recurring: z.boolean(), recurrence: nativeRecurrence, occurrence_at: moment, modified_at: moment.nullable() });
+export const event = z.looseObject({ ...baseItem, calendar_id: id, start: schedule, end: schedule, notes: z.string().nullable(), url: z.string().nullable(), location: z.string().nullable(), alarms_minutes_before: z.array(z.number()), recurring: z.boolean(), recurrence: nativeRecurrence, occurrence_at: moment, modified_at: moment.nullable() });
 const reminder = z.looseObject({ ...baseItem, list_id: id, due: schedule.nullable(), notes: z.string().nullable(), url: z.string().nullable(), completed: z.boolean(), priority: z.number().int(), alarms_minutes_before: z.array(z.number()), recurring: z.boolean(), recurrence: nativeRecurrence, modified_at: moment.nullable() });
-const page = (item: z.ZodType) => z.object({ items: z.array(item), next_cursor: z.string().nullable() });
+export const page = (item: z.ZodType) => z.object({ items: z.array(item), next_cursor: z.string().nullable() });
 const deleted = z.object({ id, deleted: z.literal(true) });
 const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const create = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const update = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
-function tool(name: string, description: string, inputSchema: z.ZodRawShape, output: z.ZodType, mode: "read" | "create" | "update"): ToolboxTool {
+export function tool(name: string, description: string, inputSchema: z.ZodRawShape, output: z.ZodType, mode: "read" | "create" | "update"): ToolboxTool {
   return scriptTool({ name, description, inputSchema, outputSchema: envelopeOutput(output), annotations: mode === "read" ? read : mode === "create" ? create : update,
     script: "productivity.py", requires: name.startsWith("notes_") ? ["platform:darwin", "binary:uv", "binary:osascript"] : ["platform:darwin", "binary:uv"],
     envelope: true, timeoutMs: 90000, buildArgs: () => [name], buildStdin: input => JSON.stringify(input), truncationHint: "use get for one item or reduce limit; never update from truncated content" });

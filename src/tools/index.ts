@@ -5,7 +5,12 @@ import { mailTools } from "./mail/index.ts";
 import { safariTools } from "./safari/index.ts";
 import { screenshotTools } from "./screenshot/index.ts";
 
-export const allTools = [
+import { organizationTools, planningTools } from "./organization.ts";
+import { capabilitiesTool } from "./capabilities.ts";
+
+const domainTools = [
+  ...organizationTools,
+  ...planningTools,
   ...notesTools,
   ...calendarTools,
   ...remindersTools,
@@ -13,3 +18,5 @@ export const allTools = [
   ...safariTools,
   ...screenshotTools,
 ];
+
+export const allTools = [...domainTools, capabilitiesTool(domainTools)];
