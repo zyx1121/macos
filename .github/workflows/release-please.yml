@@ -1,0 +1,69 @@
+name: Release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - uses: actions/checkout@v4
+        if: steps.release.outputs.pr != ''
+        with:
+          ref: ${{ fromJSON(steps.release.outputs.pr || '{}').headBranchName }}
+      - uses: oven-sh/setup-bun@v2
+        if: steps.release.outputs.pr != ''
+        with:
+          bun-version: '1.3.13'
+      - name: Refresh generated release artifacts
+        if: steps.release.outputs.pr != ''
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add dist/server.js .claude-plugin/plugin.json .mcp.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: refresh release artifacts'
+            git push
+          fi
+      - name: Check release pull request
+        if: steps.release.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ fromJSON(steps.release.outputs.pr || '{}').headBranchName }}
+        run: gh workflow run check.yml --ref "$BRANCH"
+  artifact:
+    needs: release
+    if: needs.release.outputs.created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+      - name: Attach portable plugin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          tar -czf "macos-$TAG.tar.gz" dist scripts lib plugin.json mcp.json .claude-plugin .mcp.json README.md docs LICENSE
+          sha256sum "macos-$TAG.tar.gz" > "macos-$TAG.tar.gz.sha256"
+          gh release upload "$TAG" "macos-$TAG.tar.gz" "macos-$TAG.tar.gz.sha256"

@@ -33,11 +33,12 @@ export interface ScriptToolDefinition<Shape extends z.ZodRawShape> {
   /** Appended to the truncation marker; name the escape hatch, e.g. writing to a file. */
   truncationHint?: string;
   buildArgs(input: z.infer<z.ZodObject<Shape>>): string[];
+  buildStdin?(input: z.infer<z.ZodObject<Shape>>): string;
   buildEnv?(input: z.infer<z.ZodObject<Shape>>): RunScriptOptions["env"];
 }
 
 export function scriptTool<const Shape extends z.ZodRawShape>(definition: ScriptToolDefinition<Shape>): ToolboxTool {
-  const schema = z.object(definition.inputSchema);
+  const schema = z.object(definition.inputSchema).strict();
   const outputSchema = definition.outputSchema ?? (definition.envelope ? envelopeOutput() : rawOutput());
 
   return {
@@ -55,6 +56,7 @@ export function scriptTool<const Shape extends z.ZodRawShape>(definition: Script
         envelope: definition.envelope,
         timeoutMs: definition.timeoutMs,
         truncationHint: definition.truncationHint,
+        stdin: definition.buildStdin?.(input),
         env: definition.buildEnv ? { ...augmentedEnv(), ...definition.buildEnv(input) } : undefined,
       });
     },

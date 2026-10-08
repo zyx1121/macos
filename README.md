@@ -1,92 +1,63 @@
 # macOS
 
-Calendar, Reminders, Mail, Safari and screen capture through 28 native MCP tools.
+Native Notes, Calendar, Reminders, Mail, Safari and screen capture tools for Codex and Claude Code.
 
-An independent plugin for Codex and Claude Code. Ask your agent to perform the
-task; MCP is the public interface and scripts are the implementation. Extracted
-from [zyx1121/plugin](https://github.com/zyx1121/plugin).
+The plugin exposes 41 MCP tools. Notes uses Apple Events through JXA. Calendar and Reminders use EventKit for both reads and writes, without launching their apps. Mail, Safari and screenshots retain their existing interfaces.
 
 ## Install
 
-Requires Bun (tested with 1.3.13) and uv on the host PATH.
+Requires macOS, Bun and uv. The committed bundle needs no node_modules in the installed plugin.
 
 ```sh
-# Claude Code
-claude plugin marketplace add zyx1121/marketplace
-claude plugin install macos@zyx1121
-
 # Codex
 codex plugin marketplace add zyx1121/marketplace
 codex plugin add macos@zyx1121
+
+# Claude Code
+claude plugin marketplace add zyx1121/marketplace
+claude plugin install macos@zyx1121
 ```
 
-Restart the client session after installation. The committed `dist/server.js`
-bundle needs no `bun install` in the plugin cache. Both manifests are generated
-from `plugin.json` and `mcp.json`; the marketplace pins release commits.
+Restart the client session after installation or update. Grant the MCP host full Calendar and Reminders access in System Settings > Privacy & Security. Notes and Mail/Safari require Automation permission; screenshots require Screen Recording. Notes automation may launch Notes in the background. Missing host dependencies hide affected tools with reasons on stderr; Linux exposes no native tools.
 
 ## Use
 
-Ask your agent to list calendars, find a reminder, read a Mail message, inspect
-Safari tabs, or capture a specified region of the screen.
-
-| Family | Tools | Behavior |
+| Family | Tools | Purpose |
 |---|---:|---|
-| Calendar | 5 | List calendars/events, search, add and delete events |
-| Reminders | 5 | List, add, complete and delete reminders |
-| Mail | 5 | List accounts/inbox, search/read messages and compose a visible draft |
-| Safari | 8 | Inspect tabs/page/selection, open/close a tab and evaluate JavaScript |
-| Screenshot | 5 | Full screen, interactive area/window, fixed region and clipboard |
+| Notes | 8 | Discover folders; list, search, get, create, update, append and delete notes |
+| Calendar | 7 | Discover calendars; list/search occurrences, get, create, update and delete events |
+| Reminders | 8 | Discover lists; list, search, get, create, update, complete and delete tasks |
+| Mail | 5 | Accounts, inbox, search/read and visible drafts |
+| Safari | 8 | Tabs, page contents, selection and JavaScript |
+| Screenshot | 5 | Full screen, region, interactive captures and clipboard |
 
-All tools require macOS. Calendar, Reminders, Mail and Safari require uv and
-osascript; screenshot tools require screencapture. Missing dependencies hide
-only the affected tools, with reasons on stderr. Linux exposes an empty tool list.
+Typical requests include “read my coursework note and create reminders for its deadlines” and “move this event to next week without changing its notes.” The agent chooses the appropriate tools; the server does not infer deadlines or automatically synchronize apps.
 
-Calendar and Reminders reads use EventKit and do not launch the applications.
-Grant the calling terminal or host Calendar and Reminders access in macOS privacy
-settings. App writes and Mail/Safari automation need the corresponding Automation
-permission. Screen capture needs Screen Recording access. Safari JavaScript
-requires Develop > Allow JavaScript from Apple Events.
+The full contract, names and examples are in [docs/productivity-api.md](docs/productivity-api.md).
 
-Calendar deletion, reminder completion/deletion and Safari tab closing retain
-`confirm: true`. Mail only composes visible drafts; it never sends mail.
-Safari operates on the live browser, and JavaScript can change the current page.
-Interactive screenshot area/window tools wait for the user; clipboard capture
-overwrites the clipboard. File captures default to `/tmp/screenshot.png`.
+## Interface migration
 
-Calendar and reminder dates retain the existing English AppleScript format so
-consumers such as today-mod continue to parse them.
+The productivity API is v2. Old add tools, title-based selectors, calendar.py and reminders.py are removed, with no aliases. Consumers must call the new tools and use opaque IDs. Names returned from discovery are display labels, never write selectors.
 
-## Migration
-
-Install `macos@zyx1121` before updating zyx to 0.27.0. Short tool names,
-parameters, output schemas and confirmation gates are preserved. Claude Code's
-provider changes from `plugin_zyx_utils` to `plugin_macos_macos`. Remove any
-manual registration of the same server to avoid duplicates.
-
-Update today-mod to 0.3.0 to resolve the installed macos and nycu script paths.
+- calendar_add_event becomes calendar_create_event; summary becomes title, cal becomes calendar_id, and at/duration become explicit start/end schedules.
+- reminders_add becomes reminders_create; name becomes title and list_name becomes list_id.
+- Read results use ISO schedules and structured pages, not English AppleScript date strings.
+- Update/delete require an ID, expected_revision and confirm=true. Read the item again after a conflict.
+- Create requires an explicit container and a request_key. Retries return the original saved response.
+- Direct script consumers can invoke `scripts/productivity.py OPERATION` with the same JSON input on stdin and receive a success/error JSON envelope.
 
 ## Development
 
 ```sh
 bun install --frozen-lockfile
 bun run check
-claude plugin validate .
 ```
 
-Tests are offline: synthetic results, fake executables, isolated bundled MCP
-sessions and EventKit date-format compatibility. They do not modify live apps,
-accounts or personal files.
+Checks cover schemas, host registration, installed bundles, date/time contracts, revisions, pagination, native-provider behavior and durable retry claims. Offline tests never touch personal apps. Build and automated tests run in the development sandbox; native smoke verification uses only isolated temporary items on macOS.
 
-`MACOS_MCP_MAX_STRING_CHARS` and `MACOS_MCP_MAX_TOTAL_CHARS` control
-output truncation (defaults 20000/120000); the corresponding `UTILS_` names remain
-fallbacks. `MACOS_FORCE_PLATFORM` is a registration-test override and does
-not emulate another operating system.
+`MACOS_MCP_MAX_STRING_CHARS` and `MACOS_MCP_MAX_TOTAL_CHARS` cap output (defaults 20000/120000). Truncation is explicitly marked. Never replace a note body from truncated content. Create retry claims are stored privately under `~/Library/Application Support/zyx1121/macos/`; `MACOS_MCP_STATE_DIR` overrides that location.
 
-- `src/`: MCP schemas, host checks and subprocess execution
-- `scripts/`, `lib/`: domain implementation
-- `dist/server.js`: standalone bundled runtime
-- `plugin.json`, `mcp.json`: portable manifests
-- `.claude-plugin/plugin.json`, `.mcp.json`: generated Claude Code compatibility
+Releases are generated by Release Please. Marketplace pins release commits. The bundle, manifests, scripts and libraries are included in release archives.
 
 ## License
 

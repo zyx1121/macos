@@ -6,7 +6,7 @@
   "scripts": {
     "build": "bun run scripts/build.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test && uv run tests/test_eventkit.py",
+    "test": "bun test && uv run tests/test_productivity.py",
     "check": "bun run build && bun run typecheck && bun run test"
   },
   "devDependencies": {
