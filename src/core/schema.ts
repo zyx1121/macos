@@ -39,6 +39,7 @@ export const truncationSchema = z
 
 export const errorSchema = z
   .looseObject({
+    code: z.string().optional().describe("Actionable error code, such as conflict, not_found or permission_denied."),
     message: z.string(),
     why: z.string().nullish().describe("What actually went wrong underneath."),
     hint: z.string().nullish().describe("The next action to take."),

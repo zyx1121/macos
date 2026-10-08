@@ -34906,7 +34906,7 @@ function mapRawScriptOutput(envelope, run) {
     };
   }
   const error62 = parsed.error ?? {};
-  return envelopeFailure(error62.message ?? "script reported failure with no error detail", error62.why ?? null, error62.hint ?? null);
+  return { isError: true, structuredContent: { error: { ...error62, message: error62.message ?? "script reported failure with no error detail", why: error62.why ?? null, hint: error62.hint ?? null } } };
 }
 async function runScript(options) {
   const argv = [scriptPath(options.script), ...options.args];
@@ -34914,7 +34914,9 @@ async function runScript(options) {
   let proc;
   try {
     proc = Bun.spawn(argv, {
-      stdio: ["ignore", "pipe", "pipe"],
+      stdin: options.stdin === undefined ? "ignore" : new Blob([options.stdin]),
+      stdout: "pipe",
+      stderr: "pipe",
       env: options.env ?? augmentedEnv()
     });
   } catch (error62) {
@@ -34992,6 +34994,7 @@ var truncationSchema = exports_external.looseObject({
   limit: exports_external.number().describe("Per-string character cap applied.")
 }).optional().describe("Present only when output was shortened to fit the caller's context budget.");
 var errorSchema = exports_external.looseObject({
+  code: exports_external.string().optional().describe("Actionable error code, such as conflict, not_found or permission_denied."),
   message: exports_external.string(),
   why: exports_external.string().nullish().describe("What actually went wrong underneath."),
   hint: exports_external.string().nullish().describe("The next action to take.")
@@ -35017,7 +35020,7 @@ function rawOutput() {
 
 // src/core/tool.ts
 function scriptTool(definition) {
-  const schema = exports_external.object(definition.inputSchema);
+  const schema = exports_external.object(definition.inputSchema).strict();
   const outputSchema = definition.outputSchema ?? (definition.envelope ? envelopeOutput() : rawOutput());
   return {
     name: definition.name,
@@ -35034,6 +35037,7 @@ function scriptTool(definition) {
         envelope: definition.envelope,
         timeoutMs: definition.timeoutMs,
         truncationHint: definition.truncationHint,
+        stdin: definition.buildStdin?.(input2),
         env: definition.buildEnv ? { ...augmentedEnv(), ...definition.buildEnv(input2) } : undefined
       });
     }
@@ -35081,6 +35085,85 @@ function summariseHidden(hidden) {
   return [...reasons].join(", ");
 }
 
+// src/tools/productivity.ts
+var id = exports_external.string().min(1).describe("Opaque ID returned by this plugin; never use a title as an ID.");
+var title = exports_external.string().trim().min(1).max(1000);
+var text = exports_external.string().max(200000);
+var revision = exports_external.string().min(1).describe("Revision returned by get. A stale revision fails without writing.");
+var key = exports_external.string().min(1).max(200).describe("Unique request key. Reuse only to retry the same create request; prevents duplicate creation.");
+var date6 = exports_external.iso.date();
+var moment = exports_external.iso.datetime({ offset: true }).describe("ISO 8601 timestamp with UTC offset, e.g. 2026-10-18T23:00:00+08:00.");
+var schedule = exports_external.discriminatedUnion("kind", [
+  exports_external.object({ kind: exports_external.literal("date"), date: date6 }),
+  exports_external.object({ kind: exports_external.literal("datetime"), at: moment, time_zone: exports_external.string().min(1).describe("IANA time zone, e.g. Asia/Taipei. Must agree with the timestamp offset.") })
+]);
+var nullableText = text.nullable().optional();
+var url2 = exports_external.url().nullable().optional();
+var alarms = exports_external.array(exports_external.number().int().min(0).max(525600)).max(10).describe("Minutes before the start/due time. [] clears alarms. Date-only reminders require an explicit timed reminder instead.");
+var recurrence = exports_external.object({ frequency: exports_external.enum(["daily", "weekly", "monthly", "yearly"]), interval: exports_external.number().int().min(1).max(100).default(1), count: exports_external.number().int().min(1).max(1e4).optional(), until: moment.optional() }).refine((r) => !(r.count && r.until), "Choose count or until, not both.");
+var nativeRecurrence = exports_external.array(exports_external.object({ frequency: exports_external.enum(["daily", "weekly", "monthly", "yearly"]), interval: exports_external.number().int(), count: exports_external.number().int().nullable(), until: moment.nullable(), days_of_week: exports_external.array(exports_external.object({ day: exports_external.number().int(), week: exports_external.number().int() })), days_of_month: exports_external.array(exports_external.number().int()), months_of_year: exports_external.array(exports_external.number().int()), weeks_of_year: exports_external.array(exports_external.number().int()), days_of_year: exports_external.array(exports_external.number().int()), set_positions: exports_external.array(exports_external.number().int()), first_day_of_week: exports_external.number().int() })).nullable();
+var scope = exports_external.enum(["this", "future"]).describe("Required for recurring events: this occurrence, or this occurrence and future ones.");
+var paging = { limit: exports_external.number().int().min(1).max(100).default(30), cursor: exports_external.string().optional().describe("Opaque next_cursor from the same query. A stale cursor requires restarting the query.") };
+var baseItem = { id, title: exports_external.string(), revision: exports_external.string() };
+var container = exports_external.looseObject({ id, title: exports_external.string(), account: exports_external.string(), writable: exports_external.boolean().nullable() });
+var noteSummary = exports_external.looseObject({ ...baseItem, folder_id: id, created_at: moment.nullable(), modified_at: moment.nullable(), locked: exports_external.boolean(), shared: exports_external.boolean(), attachment_count: exports_external.number().int(), preview: exports_external.string() });
+var note = noteSummary.extend({ body_html: exports_external.string(), body_text: exports_external.string() });
+var event = exports_external.looseObject({ ...baseItem, calendar_id: id, start: schedule, end: schedule, notes: exports_external.string().nullable(), url: exports_external.string().nullable(), location: exports_external.string().nullable(), alarms_minutes_before: exports_external.array(exports_external.number()), recurring: exports_external.boolean(), recurrence: nativeRecurrence, occurrence_at: moment, modified_at: moment.nullable() });
+var reminder = exports_external.looseObject({ ...baseItem, list_id: id, due: schedule.nullable(), notes: exports_external.string().nullable(), url: exports_external.string().nullable(), completed: exports_external.boolean(), priority: exports_external.number().int(), alarms_minutes_before: exports_external.array(exports_external.number()), recurring: exports_external.boolean(), recurrence: nativeRecurrence, modified_at: moment.nullable() });
+var page = (item) => exports_external.object({ items: exports_external.array(item), next_cursor: exports_external.string().nullable() });
+var deleted = exports_external.object({ id, deleted: exports_external.literal(true) });
+var read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+var create = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+var update = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
+function tool(name, description, inputSchema, output2, mode) {
+  return scriptTool({
+    name,
+    description,
+    inputSchema,
+    outputSchema: envelopeOutput(output2),
+    annotations: mode === "read" ? read : mode === "create" ? create : update,
+    script: "productivity.py",
+    requires: name.startsWith("notes_") ? ["platform:darwin", "binary:uv", "binary:osascript"] : ["platform:darwin", "binary:uv"],
+    envelope: true,
+    timeoutMs: 90000,
+    buildArgs: () => [name],
+    buildStdin: (input2) => JSON.stringify(input2),
+    truncationHint: "use get for one item or reduce limit; never update from truncated content"
+  });
+}
+var matching = { query: exports_external.string().min(1).describe("Case-insensitive substring of title or body/notes."), ...paging };
+var targetEvent = { id, occurrence_at: moment.optional().describe("Occurrence timestamp returned by list/get. Required when targeting a recurring event."), scope: scope.optional() };
+var writeEvent = { title, start: schedule, end: schedule, notes: nullableText, location: nullableText, url: url2, alarms_minutes_before: alarms.optional(), recurrence: recurrence.nullable().optional() };
+var writeReminder = { title, due: schedule.nullable().optional(), notes: nullableText, url: url2, priority: exports_external.union([exports_external.literal(0), exports_external.literal(1), exports_external.literal(5), exports_external.literal(9)]).optional(), alarms_minutes_before: alarms.optional(), recurrence: recurrence.nullable().optional() };
+var calendarTools = [
+  tool("calendar_list_calendars", "List calendars with opaque IDs, accounts and writability. Select an explicit calendar_id before creating an event.", {}, exports_external.array(container), "read"),
+  tool("calendar_list_events", "List event occurrences overlapping a time range, including full details and revisions. Recurring occurrences have their own occurrence_at.", { calendar_id: id.optional(), from: moment, to: moment, ...paging }, page(event), "read"),
+  tool("calendar_search_events", "Find events by title or notes within a time range. Returns IDs and occurrence timestamps for precise follow-up calls.", { calendar_id: id.optional(), from: moment, to: moment, ...matching }, page(event), "read"),
+  tool("calendar_get_event", "Read one event and its current revision. For recurring events, pass the occurrence_at returned by list/search.", { id, occurrence_at: moment.optional() }, event, "read"),
+  tool("calendar_create_event", "Create an event in an explicit calendar with a retry key. Date-only end is exclusive. Zoned timestamps must match time_zone.", { calendar_id: id, request_key: key, ...writeEvent }, event, "create"),
+  tool("calendar_update_event", "Patch an event by ID and expected_revision. Omitted fields stay unchanged; null clears nullable fields. Recurring events require occurrence_at and scope.", { ...targetEvent, expected_revision: revision, calendar_id: id.optional(), ...Object.fromEntries(Object.entries(writeEvent).map(([k, v]) => [k, v.optional()])), confirm: exports_external.literal(true) }, event, "update"),
+  tool("calendar_delete_event", "Delete an event by ID and expected_revision. Recurring events require occurrence_at and scope; never selects by title.", { ...targetEvent, expected_revision: revision, confirm: exports_external.literal(true) }, deleted, "update")
+];
+var remindersTools = [
+  tool("reminders_list_lists", "List reminder lists with opaque IDs, accounts and writability. Select an explicit list_id before creating a reminder.", {}, exports_external.array(container), "read"),
+  tool("reminders_list", "List reminders across all lists or one list. Filter completion and due dates; undated reminders are included only without a date filter.", { list_id: id.optional(), completed: exports_external.boolean().optional(), due_from: date6.optional(), due_to: date6.optional(), ...paging }, page(reminder), "read"),
+  tool("reminders_search", "Find reminders by title or notes across lists, with full details and revisions. Completion and due-date filters are optional.", { list_id: id.optional(), completed: exports_external.boolean().optional(), due_from: date6.optional(), due_to: date6.optional(), ...matching }, page(reminder), "read"),
+  tool("reminders_get", "Read a reminder by opaque ID, including notes, due time, alarms and current revision.", { id }, reminder, "read"),
+  tool("reminders_create", "Create a reminder with an explicit list and retry key. A date-only due has no time; use a zoned datetime for timed alarms.", { list_id: id, request_key: key, ...writeReminder }, reminder, "create"),
+  tool("reminders_update", "Patch a reminder by ID and expected_revision. Omitted fields stay unchanged; null clears nullable fields. completed can also reopen a task.", { id, expected_revision: revision, list_id: id.optional(), ...Object.fromEntries(Object.entries(writeReminder).map(([k, v]) => [k, v.optional()])), completed: exports_external.boolean().optional(), confirm: exports_external.literal(true) }, reminder, "update"),
+  tool("reminders_complete", "Complete a reminder by ID and expected_revision. Already completed reminders succeed unchanged. Recurring reminders follow Apple's next-occurrence behavior.", { id, expected_revision: revision, confirm: exports_external.literal(true) }, reminder, "update"),
+  tool("reminders_delete", "Delete a reminder by ID and expected_revision. For a recurring reminder this deletes the task and its recurrence.", { id, expected_revision: revision, confirm: exports_external.literal(true) }, deleted, "update")
+];
+var notesTools = [
+  tool("notes_list_folders", "List Notes folders with opaque IDs, account names and writability. Includes nested folders; select a folder_id for new notes.", {}, exports_external.array(container), "read"),
+  tool("notes_list", "List note metadata and previews without reading full bodies into context. Locked notes are discoverable but their contents remain inaccessible.", { folder_id: id.optional(), ...paging }, page(noteSummary), "read"),
+  tool("notes_search", "Search unlocked notes by title or plain text. Returns IDs, previews and revisions; use notes_get before editing.", { folder_id: id.optional(), ...matching }, page(noteSummary), "read"),
+  tool("notes_get", "Read a note's HTML, plain text and revision by ID. Locked notes return locked. Large bodies may be truncated; never overwrite from truncated content.", { id }, note, "read"),
+  tool("notes_create", "Create a note in an explicit folder with a retry key. body_text is escaped into HTML; pass body_html instead to preserve intentional formatting.", { folder_id: id, request_key: key, title, body_text: text.optional(), body_html: text.optional() }, note, "create"),
+  tool("notes_update", "Patch note title/body/folder by ID and revision. Body replacement on notes with attachments is refused; title/folder changes preserve attachments.", { id, expected_revision: revision, title: title.optional(), folder_id: id.optional(), body_text: text.optional(), body_html: text.optional(), confirm: exports_external.literal(true) }, note, "update"),
+  tool("notes_append", "Append escaped text or HTML to an unlocked note by ID and revision. Attachment-bearing notes are refused to avoid destructive HTML round-trips.", { id, expected_revision: revision, body_text: text.optional(), body_html: text.optional(), confirm: exports_external.literal(true) }, note, "update"),
+  tool("notes_delete", "Delete a note by ID and expected_revision. The native Notes app controls Recently Deleted behavior.", { id, expected_revision: revision, confirm: exports_external.literal(true) }, deleted, "update")
+];
 // src/core/argv.ts
 function pushPos(argv, value) {
   if (value === undefined)
@@ -35104,249 +35187,34 @@ function pushFlag(argv, flag, value) {
   argv.push(flag, String(value));
 }
 
-// src/tools/calendar/index.ts
-var envelope = true;
-var timeoutMs = 70000;
-var script = "calendar.py";
-var requires = ["platform:darwin", "binary:osascript", "binary:uv"];
-var read = { readOnlyHint: true, openWorldHint: false };
-var write = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
-var destroy = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
-var calendarTools = [
-  scriptTool({
-    name: "calendar_list_calendars",
-    description: "List Calendar.app calendars with writability. Use before add/list/search/delete when the target calendar name is unknown. Several calendars can share a display name, so prefer an exact string the user confirmed.",
-    inputSchema: {},
-    outputSchema: envelopeOutput(exports_external.array(exports_external.looseObject({ name: exports_external.string(), writable: exports_external.boolean() }))),
-    annotations: read,
-    script,
-    requires,
-    envelope,
-    timeoutMs,
-    buildArgs: () => ["show-cals"]
-  }),
-  scriptTool({
-    name: "calendar_list_events",
-    description: "List Calendar.app events across one or all calendars within a date range. Defaults to today through seven days ahead.",
-    inputSchema: {
-      cal: exports_external.string().optional().describe("Calendar name filter. Default: all calendars."),
-      start: exports_external.string().optional().describe("Range start. Accepts YYYY-MM-DD, YYYY-MM-DDTHH:MM, today, tomorrow, now, or next week."),
-      end: exports_external.string().optional().describe("Range end. Same formats as start. Default: start + 7 days."),
-      limit: exports_external.number().optional().describe("Maximum events returned.")
-    },
-    annotations: read,
-    script,
-    requires,
-    envelope,
-    timeoutMs,
-    truncationHint: "narrow the date range or set limit",
-    buildArgs: (input2) => {
-      const argv = ["list"];
-      pushFlag(argv, "--cal", input2.cal);
-      pushFlag(argv, "--from", input2.start);
-      pushFlag(argv, "--to", input2.end);
-      pushFlag(argv, "--limit", input2.limit);
-      return argv;
-    }
-  }),
-  scriptTool({
-    name: "calendar_add_event",
-    description: "Add a Calendar.app event. Writes to the user's real calendar and syncs to their other devices; there is no undo beyond calendar_delete_event.",
-    inputSchema: {
-      summary: exports_external.string().describe("Event title."),
-      at: exports_external.string().describe("Start time: YYYY-MM-DDTHH:MM, tomorrow, etc."),
-      duration: exports_external.number().optional().describe("Duration in minutes. Default: 60."),
-      cal: exports_external.string().optional().describe("Target calendar. Default: first writable calendar."),
-      location: exports_external.string().optional().describe("Event location."),
-      notes: exports_external.string().optional().describe("Event notes.")
-    },
-    annotations: write,
-    script,
-    requires,
-    envelope,
-    timeoutMs,
-    buildArgs: (input2) => {
-      const argv = ["add"];
-      pushPos(argv, input2.summary);
-      pushFlag(argv, "--at", input2.at);
-      pushFlag(argv, "--duration", input2.duration);
-      pushFlag(argv, "--cal", input2.cal);
-      pushFlag(argv, "--location", input2.location);
-      pushFlag(argv, "--notes", input2.notes);
-      return argv;
-    }
-  }),
-  scriptTool({
-    name: "calendar_search_events",
-    description: "Search Calendar.app event summaries within a date range. Defaults to today through 30 days ahead.",
-    inputSchema: {
-      query: exports_external.string().describe("Case-insensitive substring to match against event summaries."),
-      cal: exports_external.string().optional().describe("Calendar name filter. Default: all calendars."),
-      start: exports_external.string().optional().describe("Range start. Default: today."),
-      end: exports_external.string().optional().describe("Range end. Default: today + 30 days."),
-      limit: exports_external.number().optional().describe("Maximum events returned.")
-    },
-    annotations: read,
-    script,
-    requires,
-    envelope,
-    timeoutMs,
-    truncationHint: "narrow the date range or set limit",
-    buildArgs: (input2) => {
-      const argv = ["search"];
-      pushPos(argv, input2.query);
-      pushFlag(argv, "--cal", input2.cal);
-      pushFlag(argv, "--from", input2.start);
-      pushFlag(argv, "--to", input2.end);
-      pushFlag(argv, "--limit", input2.limit);
-      return argv;
-    }
-  }),
-  scriptTool({
-    name: "calendar_delete_event",
-    description: "Delete the first event with an exact matching summary in one explicit calendar. Destructive and irreversible; confirm the exact event with calendar_search_events first, since only the first match is removed.",
-    inputSchema: {
-      summary: exports_external.string().describe("Exact event summary."),
-      cal: exports_external.string().describe("Calendar to search. Required; no cross-calendar fuzzy delete."),
-      start: exports_external.string().optional().describe("Range start. Default: today."),
-      end: exports_external.string().optional().describe("Range end. Default: today + 30 days."),
-      confirm: exports_external.literal(true).describe("Required explicit confirmation.")
-    },
-    annotations: destroy,
-    script,
-    requires,
-    envelope,
-    timeoutMs,
-    buildArgs: (input2) => {
-      const argv = ["delete"];
-      pushPos(argv, input2.summary);
-      pushFlag(argv, "--cal", input2.cal);
-      pushFlag(argv, "--from", input2.start);
-      pushFlag(argv, "--to", input2.end);
-      return argv;
-    }
-  })
-];
-
-// src/tools/reminders/index.ts
-var script2 = "reminders.py";
-var requires2 = ["platform:darwin", "binary:osascript", "binary:uv"];
-var envelope2 = true;
-var timeoutMs2 = 60000;
-var read2 = { readOnlyHint: true, openWorldHint: false };
-var write2 = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
-var destroy2 = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
-var remindersTools = [
-  scriptTool({
-    name: "reminders_list_lists",
-    description: "List Reminders.app lists. Use before add/list/complete/delete when the target list name is unknown.",
-    inputSchema: {},
-    outputSchema: envelopeOutput(exports_external.array(exports_external.looseObject({ name: exports_external.string() }))),
-    annotations: read2,
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
-    buildArgs: () => ["show-lists"]
-  }),
-  scriptTool({
-    name: "reminders_list",
-    description: "List reminders in a list.",
-    inputSchema: { list_name: exports_external.string().optional().describe("Reminder list name."), show_done: exports_external.boolean().optional().describe("Include completed reminders."), limit: exports_external.number().optional().describe("Maximum reminders.") },
-    annotations: read2,
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
-    truncationHint: "set limit, or leave show_done off",
-    buildArgs: (input2) => {
-      const argv = ["list"];
-      pushFlag(argv, "--list", input2.list_name);
-      pushFlag(argv, "--show-done", input2.show_done);
-      pushFlag(argv, "--limit", input2.limit);
-      return argv;
-    }
-  }),
-  scriptTool({
-    name: "reminders_add",
-    description: "Add a reminder. Writes to the user's real Reminders.app and syncs to their other devices.",
-    inputSchema: { name: exports_external.string().describe("Reminder text."), due: exports_external.string().optional().describe("Due time/date."), list_name: exports_external.string().optional().describe("Target list."), notes: exports_external.string().optional().describe("Reminder notes.") },
-    annotations: write2,
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
-    buildArgs: (input2) => {
-      const argv = ["add"];
-      pushPos(argv, input2.name);
-      pushFlag(argv, "--due", input2.due);
-      pushFlag(argv, "--list", input2.list_name);
-      pushFlag(argv, "--notes", input2.notes);
-      return argv;
-    }
-  }),
-  scriptTool({
-    name: "reminders_complete",
-    description: "Mark the first exact-matching reminder as completed. Only the first match is touched; completing an already-completed reminder is a no-op.",
-    inputSchema: { name: exports_external.string().describe("Exact reminder name."), list_name: exports_external.string().optional().describe("List to search."), confirm: exports_external.literal(true).describe("Required explicit confirmation.") },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
-    buildArgs: (input2) => {
-      const argv = ["done"];
-      pushPos(argv, input2.name);
-      pushFlag(argv, "--list", input2.list_name);
-      return argv;
-    }
-  }),
-  scriptTool({
-    name: "reminders_delete",
-    description: "Delete the first exact-matching reminder. Destructive and irreversible; confirm the exact name with reminders_list first, since only the first match is removed.",
-    inputSchema: { name: exports_external.string().describe("Exact reminder name."), list_name: exports_external.string().optional().describe("List to search."), confirm: exports_external.literal(true).describe("Required explicit confirmation.") },
-    annotations: destroy2,
-    script: script2,
-    requires: requires2,
-    envelope: envelope2,
-    timeoutMs: timeoutMs2,
-    buildArgs: (input2) => {
-      const argv = ["delete"];
-      pushPos(argv, input2.name);
-      pushFlag(argv, "--list", input2.list_name);
-      return argv;
-    }
-  })
-];
-
 // src/tools/mail/index.ts
-var script3 = "mail.py";
-var requires3 = ["platform:darwin", "binary:osascript", "binary:uv"];
-var envelope3 = true;
-var timeoutMs3 = 130000;
-var read3 = { readOnlyHint: true, openWorldHint: false };
+var script = "mail.py";
+var requires = ["platform:darwin", "binary:osascript", "binary:uv"];
+var envelope = true;
+var timeoutMs = 130000;
+var read2 = { readOnlyHint: true, openWorldHint: false };
 var mailTools = [
   scriptTool({
     name: "mail_list_accounts",
     description: "List configured Mail.app accounts. One account can own several addresses, returned as a comma-joined string.",
     inputSchema: {},
     outputSchema: envelopeOutput(exports_external.array(exports_external.looseObject({ name: exports_external.string(), user: exports_external.string(), addresses: exports_external.string() }))),
-    annotations: read3,
-    script: script3,
-    requires: requires3,
-    envelope: envelope3,
-    timeoutMs: timeoutMs3,
+    annotations: read2,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     buildArgs: () => ["accounts"]
   }),
   scriptTool({
     name: "mail_list_inbox",
     description: "List recent inbox messages across Mail.app accounts. Reads the user's real mail; treat contents as private.",
     inputSchema: { unread: exports_external.boolean().optional().describe("Only unread messages."), limit: exports_external.number().optional().describe("Maximum rows. Default: 20.") },
-    annotations: read3,
-    script: script3,
-    requires: requires3,
-    envelope: envelope3,
-    timeoutMs: timeoutMs3,
+    annotations: read2,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     truncationHint: "lower limit, or set unread=true",
     buildArgs: (input2) => {
       const argv = ["inbox"];
@@ -35359,11 +35227,11 @@ var mailTools = [
     name: "mail_search_messages",
     description: "Search inbox subject and sender by substring. Scans the local mailbox only, so mail not synced to this Mac is invisible.",
     inputSchema: { query: exports_external.string().describe("Subject/sender substring."), limit: exports_external.number().optional().describe("Maximum rows. Default: 20.") },
-    annotations: read3,
-    script: script3,
-    requires: requires3,
-    envelope: envelope3,
-    timeoutMs: timeoutMs3,
+    annotations: read2,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     truncationHint: "lower limit or use a narrower query",
     buildArgs: (input2) => {
       const argv = ["search"];
@@ -35376,11 +35244,11 @@ var mailTools = [
     name: "mail_read_message",
     description: "Read the first inbox message whose subject matches. Returns the full body, so a long thread is truncated to fit context.",
     inputSchema: { subject: exports_external.string().describe("Exact subject preferred; falls back to contains.") },
-    annotations: read3,
-    script: script3,
-    requires: requires3,
-    envelope: envelope3,
-    timeoutMs: timeoutMs3,
+    annotations: read2,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     truncationHint: "the body was long; ask for the specific part you need",
     buildArgs: (input2) => ["read", input2.subject]
   }),
@@ -35396,10 +35264,10 @@ var mailTools = [
       account: exports_external.string().optional().describe("Send-from account name.")
     },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    script: script3,
-    requires: requires3,
-    envelope: envelope3,
-    timeoutMs: timeoutMs3,
+    script,
+    requires,
+    envelope,
+    timeoutMs,
     buildArgs: (input2) => {
       const argv = ["compose"];
       pushFlag(argv, "--to", input2.to);
@@ -35414,13 +35282,13 @@ var mailTools = [
 ];
 
 // src/tools/safari/index.ts
-var script4 = "safari.py";
-var requires4 = ["platform:darwin", "binary:osascript", "binary:uv"];
-var envelope4 = true;
-var timeoutMs4 = 60000;
-var read4 = { readOnlyHint: true, openWorldHint: false };
-var write3 = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
-var destroy3 = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
+var script2 = "safari.py";
+var requires2 = ["platform:darwin", "binary:osascript", "binary:uv"];
+var envelope2 = true;
+var timeoutMs2 = 60000;
+var read3 = { readOnlyHint: true, openWorldHint: false };
+var write = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
+var destroy = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
 var liveBrowser = "Acts on Loki's live Safari front tab, so it competes with whatever they are actually reading; for scanning pages use headless tooling instead.";
 var needsAppleEvents = "Needs Safari's Develop > Allow JavaScript from Apple Events; without it the failure is an opaque osascript error.";
 var safariTools = [
@@ -35429,11 +35297,11 @@ var safariTools = [
     description: `Get Safari front tab URL. ${liveBrowser}`,
     inputSchema: {},
     outputSchema: envelopeOutput(exports_external.looseObject({ url: exports_external.string() })),
-    annotations: read4,
-    script: script4,
-    requires: requires4,
-    envelope: envelope4,
-    timeoutMs: timeoutMs4,
+    annotations: read3,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     buildArgs: () => ["url"]
   }),
   scriptTool({
@@ -35441,22 +35309,22 @@ var safariTools = [
     description: `Get Safari front tab title. ${liveBrowser}`,
     inputSchema: {},
     outputSchema: envelopeOutput(exports_external.looseObject({ title: exports_external.string() })),
-    annotations: read4,
-    script: script4,
-    requires: requires4,
-    envelope: envelope4,
-    timeoutMs: timeoutMs4,
+    annotations: read3,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     buildArgs: () => ["title"]
   }),
   scriptTool({
     name: "safari_get_text",
     description: `Get visible rendered text from Safari front tab. ${liveBrowser} Long pages are truncated.`,
     inputSchema: {},
-    annotations: read4,
-    script: script4,
-    requires: requires4,
-    envelope: envelope4,
-    timeoutMs: timeoutMs4,
+    annotations: read3,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     truncationHint: "read the page in sections, or fetch the URL directly instead of through the browser",
     buildArgs: () => ["text"]
   }),
@@ -35465,44 +35333,44 @@ var safariTools = [
     description: `List all Safari tabs across windows. Reads the user's open tabs, which may include private context.`,
     inputSchema: {},
     outputSchema: envelopeOutput(exports_external.array(exports_external.looseObject({ wt: exports_external.string(), title: exports_external.string(), url: exports_external.string() }))),
-    annotations: read4,
-    script: script4,
-    requires: requires4,
-    envelope: envelope4,
-    timeoutMs: timeoutMs4,
+    annotations: read3,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     buildArgs: () => ["tabs"]
   }),
   scriptTool({
     name: "safari_open_url",
     description: "Open a URL in a new Safari tab. Does not block on page load; pair with a wait before reading content.",
     inputSchema: { target: exports_external.string().describe("URL to open.") },
-    annotations: write3,
-    script: script4,
-    requires: requires4,
-    envelope: envelope4,
-    timeoutMs: timeoutMs4,
+    annotations: write,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     buildArgs: (input2) => ["open", input2.target]
   }),
   scriptTool({
     name: "safari_close_tab",
     description: `Close Safari front tab. Destructive browser state change; requires confirm=true. ${liveBrowser}`,
     inputSchema: { confirm: exports_external.literal(true).describe("Required explicit confirmation.") },
-    annotations: destroy3,
-    script: script4,
-    requires: requires4,
-    envelope: envelope4,
-    timeoutMs: timeoutMs4,
+    annotations: destroy,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     buildArgs: () => ["close"]
   }),
   scriptTool({
     name: "safari_get_selection",
     description: `Get current text selection in Safari front tab. ${needsAppleEvents}`,
     inputSchema: {},
-    annotations: read4,
-    script: script4,
-    requires: requires4,
-    envelope: envelope4,
-    timeoutMs: timeoutMs4,
+    annotations: read3,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     buildArgs: () => ["selection"]
   }),
   scriptTool({
@@ -35510,20 +35378,20 @@ var safariTools = [
     description: `Evaluate JavaScript in Safari front tab. ${needsAppleEvents} ${liveBrowser}`,
     inputSchema: { expression: exports_external.string().describe("JavaScript expression.") },
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    script: script4,
-    requires: requires4,
-    envelope: envelope4,
-    timeoutMs: timeoutMs4,
+    script: script2,
+    requires: requires2,
+    envelope: envelope2,
+    timeoutMs: timeoutMs2,
     truncationHint: "return a narrower value from the expression instead of a whole document",
     buildArgs: (input2) => ["js", input2.expression]
   })
 ];
 
 // src/tools/screenshot/index.ts
-var script5 = "screenshot.sh";
-var requires5 = ["platform:darwin", "binary:screencapture"];
-var envelope5 = false;
-var timeoutMs5 = 60000;
+var script3 = "screenshot.sh";
+var requires3 = ["platform:darwin", "binary:screencapture"];
+var envelope3 = false;
+var timeoutMs3 = 60000;
 var out = exports_external.string().optional().describe("Output PNG path. Default: /tmp/screenshot.png.");
 var capture = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 var blocksOnHuman = "Blocks waiting for the user to drag or click, so never call it unattended, in a loop, or while they are away.";
@@ -35533,10 +35401,10 @@ var screenshotTools = [
     description: "Capture the full macOS screen to a PNG file. Unattended, but it records whatever is on screen, including anything private in view.",
     inputSchema: { out },
     annotations: capture,
-    script: script5,
-    requires: requires5,
-    envelope: envelope5,
-    timeoutMs: timeoutMs5,
+    script: script3,
+    requires: requires3,
+    envelope: envelope3,
+    timeoutMs: timeoutMs3,
     buildArgs: (input2) => {
       const argv = [];
       pushPos(argv, input2.out);
@@ -35548,10 +35416,10 @@ var screenshotTools = [
     description: `Interactively capture a dragged screen region. ${blocksOnHuman}`,
     inputSchema: { out },
     annotations: capture,
-    script: script5,
-    requires: requires5,
-    envelope: envelope5,
-    timeoutMs: timeoutMs5,
+    script: script3,
+    requires: requires3,
+    envelope: envelope3,
+    timeoutMs: timeoutMs3,
     buildArgs: (input2) => {
       const argv = ["--area"];
       pushPos(argv, input2.out);
@@ -35563,10 +35431,10 @@ var screenshotTools = [
     description: `Interactively capture a clicked window. ${blocksOnHuman}`,
     inputSchema: { out },
     annotations: capture,
-    script: script5,
-    requires: requires5,
-    envelope: envelope5,
-    timeoutMs: timeoutMs5,
+    script: script3,
+    requires: requires3,
+    envelope: envelope3,
+    timeoutMs: timeoutMs3,
     buildArgs: (input2) => {
       const argv = ["--window"];
       pushPos(argv, input2.out);
@@ -35578,10 +35446,10 @@ var screenshotTools = [
     description: "Capture a known pixel region with no UI interaction. Prefer this over screenshot_area when the coordinates are already known.",
     inputSchema: { region: exports_external.string().describe("x,y,w,h."), out },
     annotations: capture,
-    script: script5,
-    requires: requires5,
-    envelope: envelope5,
-    timeoutMs: timeoutMs5,
+    script: script3,
+    requires: requires3,
+    envelope: envelope3,
+    timeoutMs: timeoutMs3,
     buildArgs: (input2) => {
       const argv = ["--region", input2.region];
       pushPos(argv, input2.out);
@@ -35593,16 +35461,17 @@ var screenshotTools = [
     description: "Capture full screen to the clipboard. No file path is produced, so the image cannot be read back here; it also overwrites whatever the user had copied.",
     inputSchema: {},
     annotations: capture,
-    script: script5,
-    requires: requires5,
-    envelope: envelope5,
-    timeoutMs: timeoutMs5,
+    script: script3,
+    requires: requires3,
+    envelope: envelope3,
+    timeoutMs: timeoutMs3,
     buildArgs: () => ["--clipboard"]
   })
 ];
 
 // src/tools/index.ts
 var allTools = [
+  ...notesTools,
   ...calendarTools,
   ...remindersTools,
   ...mailTools,
@@ -35614,7 +35483,7 @@ var plugin_default = {
   $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   name: "macos",
   version: "0.1.0",
-  description: "macOS Calendar, Reminders, Mail, Safari and screenshots through MCP.",
+  description: "Native Notes, Calendar, Reminders, Mail, Safari and screenshots with intent-oriented MCP tools.",
   author: {
     name: "zyx1121",
     url: "https://github.com/zyx1121"
@@ -35631,7 +35500,7 @@ var plugin_default = {
     "com.openai": {
       interface: {
         displayName: "macOS",
-        shortDescription: "macOS apps and screen capture",
+        shortDescription: "Notes, tasks, calendars and macOS apps",
         developerName: "zyx1121",
         category: "Productivity",
         capabilities: [

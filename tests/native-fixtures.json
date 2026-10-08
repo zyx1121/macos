@@ -1,0 +1,83 @@
+{
+  "calendar_get_event": {
+    "title": "Verification note",
+    "notes": null,
+    "url": null,
+    "alarms_minutes_before": [
+      60.0
+    ],
+    "recurring": true,
+    "recurrence": [
+      {
+        "frequency": "daily",
+        "interval": 1,
+        "count": 2,
+        "until": null,
+        "days_of_week": [],
+        "days_of_month": [],
+        "months_of_year": [],
+        "weeks_of_year": [],
+        "days_of_year": [],
+        "set_positions": [],
+        "first_day_of_week": 2
+      }
+    ],
+    "modified_at": "2026-10-08T08:21:17.448510+00:00",
+    "other_alarms": [],
+    "id": "fixture-id",
+    "calendar_id": "fixture-calendar_id",
+    "start": {
+      "kind": "datetime",
+      "at": "2026-10-10T04:00:00+08:00",
+      "time_zone": "Asia/Taipei"
+    },
+    "end": {
+      "kind": "datetime",
+      "at": "2026-10-10T04:15:00+08:00",
+      "time_zone": "Asia/Taipei"
+    },
+    "location": null,
+    "occurrence_at": "2026-10-09T20:00:00+00:00",
+    "read_only": false,
+    "revision": "fixture-revision"
+  },
+  "reminders_get": {
+    "title": "Verification note",
+    "notes": null,
+    "url": null,
+    "alarms_minutes_before": [
+      1440.0,
+      60.0
+    ],
+    "recurring": false,
+    "recurrence": null,
+    "modified_at": "2026-10-08T08:21:17.545202+00:00",
+    "other_alarms": [],
+    "id": "fixture-id",
+    "list_id": "fixture-list_id",
+    "due": {
+      "kind": "datetime",
+      "at": "2026-10-09T04:00:00+08:00",
+      "time_zone": "Asia/Taipei"
+    },
+    "completed": false,
+    "priority": 0,
+    "completed_at": null,
+    "revision": "fixture-revision"
+  },
+  "notes_get": {
+    "id": "fixture-id",
+    "title": "Verification note",
+    "folder_id": "fixture-folder_id",
+    "created_at": "2026-10-08T08:21:18.000Z",
+    "modified_at": "2026-10-08T08:21:18.000Z",
+    "locked": false,
+    "shared": false,
+    "attachment_count": 0,
+    "attachments": [],
+    "body_html": "<div><b><span style=\"font-size: 11px\">Codex temporary final 1670a89b</span></b><span style=\"font-size: 11px\"><br></span></div>\n<div><b><span style=\"font-size: 11px\">Formatted</span></b><span style=\"font-size: 11px\"> content</span></div>\n",
+    "body_text": "Codex temporary final 1670a89b\nFormatted content\n",
+    "revision": "fixture-revision",
+    "preview": "Codex temporary final 1670a89b\nFormatted content\n"
+  }
+}

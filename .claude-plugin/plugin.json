@@ -1,7 +1,7 @@
 {
   "name": "macos",
   "version": "0.1.0",
-  "description": "macOS Calendar, Reminders, Mail, Safari and screenshots through MCP.",
+  "description": "Native Notes, Calendar, Reminders, Mail, Safari and screenshots with intent-oriented MCP tools.",
   "author": {
     "name": "zyx1121",
     "url": "https://github.com/zyx1121"

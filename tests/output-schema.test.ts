@@ -21,10 +21,10 @@ const SAMPLES: Record<string, unknown> = {
   safari_get_title: { title: "Example Page" },
   safari_list_tabs: [{ wt: "1/1", title: "Example Page", url: "https://example.test/page" }],
   calendar_list_calendars: [
-    { name: "Example Calendar", writable: true },
-    { name: "Example Holidays", writable: false },
+    { id: "cal-1", title: "Example Calendar", account: "Local", writable: true },
+    { id: "cal-2", title: "Example Holidays", account: "Local", writable: false },
   ],
-  reminders_list_lists: [{ name: "Example List" }],
+  reminders_list_lists: [{ id: "list-1", title: "Example List", account: "Local", writable: true }],
   mail_list_accounts: [{ name: "Example", user: "user@example.test", addresses: "user@example.test, alias@example.test" }],
 
 };
@@ -46,10 +46,10 @@ describe("Tier A output schemas", () => {
   test("the truncation report is optional but accepted", () => {
     const schema = outputSchemaOf("reminders_list_lists");
 
-    expect(schema.safeParse({ data: [{ name: "Example List" }], metadata: {} }).success).toBe(true);
+    expect(schema.safeParse({ data: [{ id: "list-1", title: "Example List", account: "Local", writable: true }], metadata: {} }).success).toBe(true);
     expect(
       schema.safeParse({
-        data: [{ name: "Example List" }],
+        data: [{ id: "list-1", title: "Example List", account: "Local", writable: true }],
         metadata: {},
         _truncation: { fields: ["data[0].name"], original_chars: 999, limit: 100 },
       }).success,
@@ -59,7 +59,8 @@ describe("Tier A output schemas", () => {
   test("Tier B tools still name the envelope shell", () => {
     const schema = outputSchemaOf("calendar_list_events");
 
-    expect(schema.safeParse({ data: { anything: true }, metadata: {} }).success).toBe(true);
+    expect(schema.safeParse({ data: { items: [], next_cursor: null }, metadata: {} }).success).toBe(true);
+    expect(schema.safeParse({ data: { anything: true }, metadata: {} }).success).toBe(false);
   });
 
   test("non-envelope tools declare the raw stream shell", () => {

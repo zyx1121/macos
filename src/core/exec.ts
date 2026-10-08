@@ -5,6 +5,7 @@ import { truncateStructured } from "./truncate.ts";
 
 export interface RunScriptOptions {
   script: string;
+  stdin?: string;
   args: string[];
   envelope: boolean;
   timeoutMs: number;
@@ -171,7 +172,7 @@ function mapRawScriptOutput(envelope: boolean, run: ScriptRun): ToolRunResult {
   }
 
   const error = parsed.error ?? {};
-  return envelopeFailure(error.message ?? "script reported failure with no error detail", error.why ?? null, error.hint ?? null);
+  return { isError: true, structuredContent: { error: { ...error, message: error.message ?? "script reported failure with no error detail", why: error.why ?? null, hint: error.hint ?? null } } };
 }
 
 export async function runScript(options: RunScriptOptions): Promise<ToolRunResult> {
@@ -180,7 +181,9 @@ export async function runScript(options: RunScriptOptions): Promise<ToolRunResul
   let proc;
   try {
     proc = Bun.spawn(argv, {
-      stdio: ["ignore", "pipe", "pipe"],
+      stdin: options.stdin === undefined ? "ignore" : new Blob([options.stdin]),
+      stdout: "pipe",
+      stderr: "pipe",
       env: options.env ?? augmentedEnv(),
     });
   } catch (error) {
