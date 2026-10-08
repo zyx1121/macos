@@ -17,7 +17,10 @@ for (const platform of ["darwin", "linux"]) {
       Object.assign(env, { PATH: bin + ":" + env.PATH, MACOS_FORCE_PLATFORM: platform });
       await client.connect(new StdioClientTransport({ command: process.execPath, args: [join(temp, "dist/server.js")], cwd: temp, env, stderr: "pipe" }));
       const listed = await client.listTools();
-      expect(listed.tools).toHaveLength(platform === "darwin" ? 41 : 0);
+      expect(listed.tools).toHaveLength(platform === "darwin" ? 64 : 1);
+      const capability=await client.callTool({name:"macos_get_capabilities",arguments:{}});
+      expect(capability.isError).toBe(false);
+      expect(JSON.stringify(capability)).toContain("missing");
       if (platform === "darwin") {
         const rejected = await client.callTool({ name: "safari_close_tab", arguments: {} });
         expect(rejected.isError).toBe(true);

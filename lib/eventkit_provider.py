@@ -14,6 +14,7 @@ from productivity_contract import (
     fail,
     paginate,
     timestamp,
+    validate_recurrence,
 )
 
 
@@ -105,6 +106,7 @@ def container_row(c):
         "title": c.title(),
         "account": c.source().title(),
         "writable": bool(c.allowsContentModifications()),
+        "source_id": c.source().sourceIdentifier(),
     }
 
 
@@ -207,6 +209,16 @@ def event_row(e):
             "start": schedule(e.startDate()),
             "end": end_value,
             "location": e.location(),
+            "availability": {
+                -1: "unsupported",
+                0: "busy",
+                1: "free",
+                2: "tentative",
+                3: "unavailable",
+            }.get(int(e.availability()), "unknown"),
+            "status": {0: "none", 1: "confirmed", 2: "tentative", 3: "canceled"}.get(
+                int(e.status()), "unknown"
+            ),
             "occurrence_at": iso(e.startDate()),
             "read_only": not bool(e.calendar().allowsContentModifications()),
         }
@@ -329,6 +341,7 @@ def set_recurrence(item, value):
     if value is None:
         item.setRecurrenceRules_(None)
         return
+    validate_recurrence(value)
     end = None
     if value.get("count"):
         end = E.EKRecurrenceEnd.recurrenceEndWithOccurrenceCount_(value["count"])
@@ -342,8 +355,20 @@ def set_recurrence(item, value):
         "monthly": E.EKRecurrenceFrequencyMonthly,
         "yearly": E.EKRecurrenceFrequencyYearly,
     }[value["frequency"]]
-    rule = E.EKRecurrenceRule.alloc().initRecurrenceWithFrequency_interval_end_(
-        frequency, value.get("interval", 1), end
+    weekdays = [
+        E.EKRecurrenceDayOfWeek.dayOfWeek_weekNumber_(d["day"], d.get("week", 0))
+        for d in value.get("days_of_week", [])
+    ] or None
+    rule = E.EKRecurrenceRule.alloc().initRecurrenceWithFrequency_interval_daysOfTheWeek_daysOfTheMonth_monthsOfTheYear_weeksOfTheYear_daysOfTheYear_setPositions_end_(
+        frequency,
+        value.get("interval", 1),
+        weekdays,
+        value.get("days_of_month"),
+        value.get("months_of_year"),
+        value.get("weeks_of_year"),
+        value.get("days_of_year"),
+        value.get("set_positions"),
+        end,
     )
     item.setRecurrenceRules_([rule])
 
@@ -484,6 +509,43 @@ def _perform(operation, p):
 
     kind = "calendar" if operation.startswith("calendar_") else "reminders"
     store = store_for(kind)
+    if operation.endswith("_sources"):
+        return sorted(
+            [
+                {
+                    "id": x.sourceIdentifier(),
+                    "title": x.title(),
+                    "source_type": int(x.sourceType()),
+                }
+                for x in store.sources()
+            ],
+            key=lambda x: x["id"],
+        )
+    object_name = "calendar" if kind == "calendar" else "list"
+    if operation in {
+        f"{kind}_{action}_{object_name}"
+        for action in ("get", "create", "update", "delete")
+    }:
+        return manage_container(store, kind, operation, p)
+    if operation in {"calendar_find_free_slots", "calendar_check_conflicts"}:
+        from planning import calculate, range_bounds
+
+        first, last, zone = range_bounds(p)
+        ids = p.get("calendar_ids", [])
+        if not ids or len(set(ids)) != len(ids):
+            fail("invalid_argument", "Select distinct explicit calendar IDs")
+        chosen = [container(store, kind, x) for x in ids]
+        pred = store.predicateForEventsWithStartDate_endDate_calendars_(
+            native_date(
+                first - timedelta(days=2) if p.get("include_all_day", True) else first
+            ),
+            native_date(
+                last + timedelta(days=2) if p.get("include_all_day", True) else last
+            ),
+            chosen,
+        )
+        rows = [event_row(e) for e in (store.eventsMatchingPredicate_(pred) or [])]
+        return calculate(rows, p, ids, operation == "calendar_check_conflicts")
     if operation in {"calendar_list_calendars", "reminders_list_lists"}:
         return sorted(
             [container_row(c) for c in containers(store, kind)],
@@ -668,3 +730,93 @@ def perform(operation, payload):
         }:
             error.error["write_not_started"] = True
         raise
+
+
+def managed_container(store, kind, c):
+    if kind == "calendar":
+        # itemsWithIdentifiers covers historical and distant-future events, not just a date predicate.
+        count = None
+    else:
+        count = len(fetch_reminders(store, [c]))
+    data = container_row(c)
+    data["revision"] = digest(data)
+    data["item_count"] = count
+    return data
+
+
+def calendar_has_items(store, c):
+    # EventKit silently caps event predicates to four years. Scan each bounded
+    # interval instead of interpreting a truncated broad query as empty.
+    for year in range(1, 10000, 4):
+        start = datetime(year, 1, 1, tzinfo=timezone.utc)
+        end = (
+            datetime(min(year + 4, 9999), 1, 1, tzinfo=timezone.utc)
+            if year + 4 <= 9999
+            else datetime(9999, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        )
+        pred = store.predicateForEventsWithStartDate_endDate_calendars_(
+            native_date(start), native_date(end), [c]
+        )
+        if store.eventsMatchingPredicate_(pred):
+            return True
+    return False
+
+
+def manage_container(store, kind, operation, p):
+    import EventKit as E
+
+    creating = "_create_" in operation
+    if creating:
+        source = store.sourceWithIdentifier_(p["source_id"])
+        if source is None:
+            fail("not_found", "Source ID no longer exists", write_not_started=True)
+        c = E.EKCalendar.calendarForEntityType_eventStore_(entity(kind), store)
+        c.setSource_(source)
+        c.setTitle_(p["title"])
+    else:
+        c = container(store, kind, p["id"])
+        current = managed_container(store, kind, c)
+        if "_get_" in operation:
+            return current
+        if not p.get("confirm"):
+            fail(
+                "confirmation_required",
+                "Writing requires confirm=true",
+                write_not_started=True,
+            )
+        check_revision(current, p["expected_revision"])
+        if not c.allowsContentModifications():
+            fail("read_only", "Container is read-only", write_not_started=True)
+        if "_delete_" in operation:
+            nonempty = (
+                calendar_has_items(store, c)
+                if kind == "calendar"
+                else bool(fetch_reminders(store, [c]))
+            )
+            if nonempty:
+                fail(
+                    "not_empty",
+                    "Only empty containers can be deleted",
+                    write_not_started=True,
+                )
+            ok, error = store.removeCalendar_commit_error_(c, True, None)
+            if not ok:
+                fail(
+                    "native_write_failed",
+                    "Native store refused container deletion",
+                    str(error),
+                    write_not_started=True,
+                )
+            return {"id": p["id"], "deleted": True}
+        c.setTitle_(p["title"])
+    ok, error = store.saveCalendar_commit_error_(c, True, None)
+    if not ok:
+        fail(
+            "unsupported_source"
+            if error and error.code() in (17, 25)
+            else "native_write_failed",
+            "Native source refused calendar/list creation or update",
+            str(error),
+            write_not_started=True,
+        )
+    return managed_container(store, kind, c)

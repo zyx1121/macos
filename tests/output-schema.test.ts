@@ -25,7 +25,7 @@ const SAMPLES: Record<string, unknown> = {
     { id: "cal-2", title: "Example Holidays", account: "Local", writable: false },
   ],
   reminders_list_lists: [{ id: "list-1", title: "Example List", account: "Local", writable: true }],
-  mail_list_accounts: [{ name: "Example", user: "user@example.test", addresses: "user@example.test, alias@example.test" }],
+  mail_list_accounts: [{ id:"account-1", name: "Example", addresses: ["user@example.test", "alias@example.test"] }],
 
 };
 
