@@ -35210,7 +35210,6 @@ var envelope = true;
 var timeoutMs = 60000;
 var read2 = { readOnlyHint: true, openWorldHint: false };
 var write = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
-var destroy = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
 var liveBrowser = "Acts on Loki's live Safari front tab, so it competes with whatever they are actually reading; for scanning pages use headless tooling instead.";
 var needsAppleEvents = "Needs Safari's Develop > Allow JavaScript from Apple Events; without it the failure is an opaque osascript error.";
 var safariTools = [
@@ -35264,7 +35263,7 @@ var safariTools = [
   }),
   scriptTool({
     name: "safari_open_url",
-    description: "Open a URL in a new Safari tab. Does not block on page load; pair with a wait before reading content.",
+    description: "Open a URL in the agent tab: reuses the tab this tool opened, else adds one tab to the front window (a window only when Safari has none) and focuses it. Does not wait for load. Call safari_close_tab when done.",
     inputSchema: { target: exports_external.string().describe("URL to open.") },
     annotations: write,
     script,
@@ -35275,9 +35274,9 @@ var safariTools = [
   }),
   scriptTool({
     name: "safari_close_tab",
-    description: `Close Safari front tab. Destructive browser state change; requires confirm=true. ${liveBrowser}`,
-    inputSchema: { confirm: exports_external.literal(true).describe("Required explicit confirmation.") },
-    annotations: destroy,
+    description: "Close the agent tab that safari_open_url opened. Never closes the user's own tabs; reports closed=false when no agent tab is left. Call it when done with Safari.",
+    inputSchema: {},
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     script,
     requires,
     envelope,

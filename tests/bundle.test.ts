@@ -22,7 +22,7 @@ for (const platform of ["darwin", "linux"]) {
       expect(capability.isError).toBe(false);
       expect(JSON.stringify(capability)).toContain("missing");
       if (platform === "darwin") {
-        const rejected = await client.callTool({ name: "safari_close_tab", arguments: {} });
+        const rejected = await client.callTool({ name: "calendar_delete_event", arguments: { summary: "standup", cal: "Work" } });
         expect(rejected.isError).toBe(true);
         expect(JSON.stringify(rejected)).toContain("confirm");
         const screenshot = await client.callTool({ name: "screenshot_full", arguments: { out: join(temp,"synthetic.png") } });
