@@ -35468,7 +35468,7 @@ var allTools = [...domainTools, capabilitiesTool(domainTools)];
 var plugin_default = {
   $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   name: "macos",
-  version: "0.3.0",
+  version: "0.3.1",
   description: "Native Notes, Calendar, Reminders, Mail, Safari and screenshots with intent-oriented MCP tools.",
   author: {
     name: "zyx1121",
