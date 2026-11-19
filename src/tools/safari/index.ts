@@ -10,7 +10,6 @@ const timeoutMs = 60000;
 
 const read = { readOnlyHint: true, openWorldHint: false } as const;
 const write = { readOnlyHint: false, destructiveHint: false, openWorldHint: true } as const;
-const destroy = { readOnlyHint: false, destructiveHint: true, openWorldHint: false } as const;
 
 /** Every safari tool drives the user's own live browser, not a headless one. */
 const liveBrowser = "Acts on Loki's live Safari front tab, so it competes with whatever they are actually reading; for scanning pages use headless tooling instead.";
@@ -67,7 +66,7 @@ export const safariTools: ToolboxTool[] = [
   }),
   scriptTool({
     name: "safari_open_url",
-    description: "Open a URL in a new Safari tab. Does not block on page load; pair with a wait before reading content.",
+    description: "Open a URL in the agent tab: reuses the tab this tool opened, else adds one tab to the front window (a window only when Safari has none) and focuses it. Does not wait for load. Call safari_close_tab when done.",
     inputSchema: { target: z.string().describe("URL to open.") },
     annotations: write,
     script,
@@ -78,9 +77,9 @@ export const safariTools: ToolboxTool[] = [
   }),
   scriptTool({
     name: "safari_close_tab",
-    description: `Close Safari front tab. Destructive browser state change; requires confirm=true. ${liveBrowser}`,
-    inputSchema: { confirm: z.literal(true).describe("Required explicit confirmation.") },
-    annotations: destroy,
+    description: "Close the agent tab that safari_open_url opened. Never closes the user's own tabs; reports closed=false when no agent tab is left. Call it when done with Safari.",
+    inputSchema: {},
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     script,
     requires,
     envelope,

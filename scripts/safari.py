@@ -5,7 +5,8 @@
 # ///
 """Atomic Safari.app operations via AppleScript.
 
-url / title / text / tabs / open / close / selection / js. The first six work
+url / title / text / tabs / open / close / selection / js. `open` reuses one
+agent tab and `close` closes it. The first six work
 out of the box. `selection` and `js` need a one-time Safari setting:
 
     Safari → Settings → Advanced → "Show Develop menu in menu bar"
@@ -149,34 +150,154 @@ end tell
     emit(data, {"count": len(data)}, human=human)
 
 
-# ── open ─────────────────────────────────────────────────────────
-@app.command(name="open", help="Open <url> in a new tab. Does NOT block on page load — pair with a sleep if you need content immediately.")
-def open_cmd(target: str = typer.Argument(..., metavar="URL", help="URL to open.")):
-    safe = escape_as(target)
-    run_as(
-        f'tell application "Safari" to make new document with properties {{URL:"{safe}"}}',
-        want_stdout=False,
+# ── agent tab ────────────────────────────────────────────────
+# Safari tabs have no stable id, so the tab this tool opened is remembered as
+# window id + tab index + the URL and tab count it had. `open` navigates that
+# tab again instead of piling up tabs, and `close` closes only that tab.
+STATE = _Path.home() / "Library" / "Caches" / "zyx1121-macos" / "safari-agent-tab.json"
+
+# argv: wid, idx, url, count. Prints the tab index when it is still ours, else 0.
+FIND_AGENT_TAB = '''
+on run argv
+    set wid to (item 1 of argv) as integer
+    set idx to (item 2 of argv) as integer
+    set lastUrl to item 3 of argv
+    set lastCount to (item 4 of argv) as integer
+    tell application "Safari"
+        try
+            set w to window id wid
+            set n to count of tabs of w
+            if idx > n then return 0
+            set u to URL of tab idx of w
+            if u is missing value then set u to ""
+            if u is lastUrl or n is lastCount then return idx
+        end try
+        return 0
+    end tell
+end run
+'''
+
+
+def load_state() -> dict | None:
+    try:
+        import json
+        return json.loads(STATE.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def save_state(state: dict | None) -> None:
+    import json
+    if state is None:
+        STATE.unlink(missing_ok=True)
+        return
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    STATE.write_text(json.dumps(state))
+
+
+def run_argv(script: str, *args: str) -> str:
+    result = subprocess.run(
+        ["osascript", "-", *args],
+        input=script, capture_output=True, text=True, check=False, timeout=30,
     )
+    if result.returncode != 0:
+        fail(result.stderr.strip() or "AppleScript failed",
+             hint="check that Safari is running and this terminal has Automation access to it", code=2)
+    return result.stdout.strip()
+
+
+def find_agent_tab(state: dict | None) -> int:
+    if not state:
+        return 0
+    out = run_argv(FIND_AGENT_TAB, str(state["wid"]), str(state["idx"]), state.get("url", ""), str(state.get("count", 0)))
+    return int(out or 0)
+
+
+# argv: url, wid, idx (idx 0 = open a new tab). Prints "wid<TAB>idx<TAB>count".
+OPEN_TAB = '''
+on run argv
+    set u to item 1 of argv
+    set wid to (item 2 of argv) as integer
+    set idx to (item 3 of argv) as integer
+    tell application "Safari"
+        if idx > 0 then
+            set w to window id wid
+            set URL of tab idx of w to u
+        else
+            set w to missing value
+            repeat with x in windows
+                if visible of x and (count of tabs of x) > 0 then
+                    set w to contents of x
+                    exit repeat
+                end if
+            end repeat
+            if w is missing value then
+                make new document with properties {URL:u}
+                set w to front window
+                set idx to 1
+            else
+                make new tab at end of tabs of w with properties {URL:u}
+                set idx to count of tabs of w
+            end if
+        end if
+        set current tab of w to tab idx of w
+        set index of w to 1
+        return ((id of w) as string) & (character id 9) & idx & (character id 9) & (count of tabs of w)
+    end tell
+end run
+'''
+
+
+# ── open ─────────────────────────────────────────────────────────
+@app.command(name="open", help="Open <url> in the agent tab: reuse the tab this tool opened before, else add one tab to the front window. Never opens a window unless Safari has none. Does NOT block on page load.")
+def open_cmd(target: str = typer.Argument(..., metavar="URL", help="URL to open.")):
+    state = load_state()
+    idx = find_agent_tab(state)
+    wid = state["wid"] if idx else 0
+    out = run_argv(OPEN_TAB, target, str(wid), str(idx))
+    w, i, n = out.split("\t")
+    save_state({"wid": int(w), "idx": int(i), "url": target, "count": int(n)})
     emit(
-        {"action": "open", "url": target},
-        human=lambda d, _m: print(f"opened: {d['url']}"),
+        {"action": "open", "url": target, "reused": bool(idx), "wt": f"{w}/{i}"},
+        human=lambda d, _m: print(f"{'reused' if d['reused'] else 'opened'}: {d['url']}"),
     )
 
 
 # ── close ────────────────────────────────────────────────────────
-@app.command(help="Close the front tab (reports the URL that just closed).")
-def close():
-    script = '''
-tell application "Safari"
-    set u to URL of current tab of front window
-    close current tab of front window
-    return u
-end tell
+CLOSE_TAB = '''
+on run argv
+    set wid to (item 1 of argv) as integer
+    set idx to (item 2 of argv) as integer
+    tell application "Safari"
+        set w to window id wid
+        set t to tab idx of w
+        set u to URL of t
+        if (count of tabs of w) is 1 then
+            close w
+        else
+            close t
+        end if
+        if u is missing value then return ""
+        return u
+    end tell
+end run
 '''
-    out = run_as(script)
+
+
+@app.command(help="Close the agent tab that `open` created. Never touches the user's own tabs.")
+def close():
+    state = load_state()
+    idx = find_agent_tab(state)
+    if not idx:
+        save_state(None)
+        emit({"action": "close", "closed": False, "url": None},
+             human=lambda d, _m: print("no agent tab open"))
+        return
+    out = run_argv(CLOSE_TAB, str(state["wid"]), str(idx))
+    save_state(None)
     emit(
-        {"action": "close", "url": out or None},
-        human=lambda d, _m: print(f"closed: {d['url']}" if d["url"] else "closed"),
+        {"action": "close", "closed": True, "url": out or None},
+        human=lambda d, _m: print(f"closed: {d['url']}"),
     )
 
 

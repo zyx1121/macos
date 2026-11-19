@@ -90,6 +90,5 @@ describe("selected native tool argv mappings", () => {
     await expectRejected("calendar_delete_event", { summary: "standup", cal: "Work" });
     await expectRejected("reminders_complete", { name: "pay bill" });
     await expectRejected("reminders_delete", { name: "pay bill" });
-    await expectRejected("safari_close_tab", {});
   });
 });
