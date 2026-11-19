@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/zyx1121/macos/compare/v0.3.0...v0.3.1) (2026-11-19)
+
+
+### Bug fixes
+
+* **safari:** reuse one agent tab instead of opening windows ([#8](https://github.com/zyx1121/macos/issues/8)) ([309f1b2](https://github.com/zyx1121/macos/commit/309f1b2929c89aadb7cd418f0f89e50feafaeb39))
+
 ## [0.3.0](https://github.com/zyx1121/macos/compare/v0.2.0...v0.3.0) (2026-10-08)
 
 
