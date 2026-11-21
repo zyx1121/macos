@@ -10,9 +10,9 @@
     "check": "bun run build && bun run typecheck && bun run test"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "1.31.0",
-    "@types/bun": "1.4.2",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@types/bun": "1.4.5",
     "typescript": "7.0.2",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   }
 }
